@@ -17,12 +17,35 @@ function markdownToPrintableHtml(markdown: string): string {
 
   let html = markdown;
 
-  // Handle fenced code blocks
+  // Handle fenced code blocks (with SVG diagram rendering)
   html = html.replace(/```([a-zA-Z0-9]*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    const cleanLang = (lang || '').toLowerCase();
+    if (cleanLang === 'svg' && code.includes('<svg') && code.includes('</svg>')) {
+      return `<div style="text-align: center; margin: 16px 0; padding: 12px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px;">
+        ${code.trim()}
+      </div>`;
+    }
     return `<div class="code-container">
       <div class="code-header">${escapeHtml(lang || 'CODE')}</div>
       <pre><code>${escapeHtml(code.trim())}</code></pre>
     </div>`;
+  });
+
+  // Handle markdown tables
+  html = html.replace(/(?:^|\n)((?:\|.+?\|\r?\n)+)/g, (match, tableBlock) => {
+    const lines = tableBlock.trim().split(/\r?\n/).filter(Boolean);
+    if (lines.length < 2) return match;
+    const parseCells = (line: string) =>
+      line.replace(/^\|/, '').replace(/\|$/, '').split('|').map((c: string) => c.trim());
+    const headers = parseCells(lines[0]);
+    const isSep = /^\|?(\s*:?-+:?\s*\|)+\s*:?-+:?\s*\|?$/.test(lines[1]);
+    const dataLines = isSep ? lines.slice(2) : lines.slice(1);
+    const headerHtml = `<tr>${headers.map((h: string) => `<th style="padding: 6px 12px; background: #f1f5f9; border: 1px solid #cbd5e1; font-weight: 600; text-align: left;">${h}</th>`).join('')}</tr>`;
+    const rowsHtml = dataLines.map((l: string) => {
+      const cells = parseCells(l);
+      return `<tr>${cells.map((c: string) => `<td style="padding: 6px 12px; border: 1px solid #cbd5e1; font-family: monospace;">${c}</td>`).join('')}</tr>`;
+    }).join('');
+    return `\n<table style="width: 100%; border-collapse: collapse; margin: 12px 0;"><thead>${headerHtml}</thead><tbody>${rowsHtml}</tbody></table>\n`;
   });
 
   // Handle blockquotes

@@ -48,6 +48,7 @@ interface AppContextType {
   createNewSession: (domain?: DomainType) => string;
   currentMessages: ChatMessage[];
   sendMessage: (content: string, attachments?: Attachment[]) => void;
+  editAndResubmitMessage: (messageId: string, newContent: string) => void;
   isGenerating: boolean;
   isSidebarCollapsed: boolean;
   setIsSidebarCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
@@ -623,6 +624,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }));
     setActiveSessionId(newSessionId);
 
+    const liveApiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+
     setIsGenerating(true);
     fetch('/api/chat', {
       method: 'POST',
@@ -633,12 +636,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
         domain,
         currentPanicLevel: panicLevel,
         model: activeModel,
+        apiKey: liveApiKey,
       }),
     })
       .then(async (res) => {
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || errData.details || `Server responded with ${res.status}`);
+          const actualErrorMessage =
+            (typeof errData.details === 'string' && errData.details) ||
+            (typeof errData.error === 'string' && errData.error) ||
+            errData.error?.message ||
+            (typeof errData.message === 'string' ? errData.message : null) ||
+            (errData.message?.content ? errData.message.content : null) ||
+            `Server responded with ${res.status}`;
+          throw new Error(actualErrorMessage);
         }
         return res.json();
       })
@@ -674,12 +685,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
         }
       })
-      .catch((err) => {
+      .catch((err: any) => {
         console.error('API error in topic investigation:', err);
+        const actualErrorMessage = err?.message || 'Error communicating with /api/chat service.';
+        const cleanContent = actualErrorMessage.startsWith('⚠️')
+          ? actualErrorMessage
+          : `⚠️ **Gemini API Error:** ${actualErrorMessage}`;
         const errorMsg: ChatMessage = {
           id: `err-${Date.now()}`,
           role: 'assistant',
-          content: `⚠️ **Unable to complete inquiry:** ${err.message || 'Error communicating with /api/chat service.'}`,
+          content: cleanContent,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           domain,
         };
@@ -824,6 +839,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .slice(-10)
       .map((m) => ({ role: m.role, content: m.content }));
 
+    const liveApiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+
     // AI Generation via Secure Server API Route (/api/chat)
     setIsGenerating(true);
 
@@ -838,12 +855,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
         attachments,
         history: sessionHistory,
         model: activeModel,
+        apiKey: liveApiKey,
       }),
     })
       .then(async (res) => {
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || errData.details || `API server error: ${res.status}`);
+          const actualErrorMessage =
+            (typeof errData.details === 'string' && errData.details) ||
+            (typeof errData.error === 'string' && errData.error) ||
+            errData.error?.message ||
+            (typeof errData.message === 'string' ? errData.message : null) ||
+            (errData.message?.content ? errData.message.content : null) ||
+            `API server error: ${res.status}`;
+          throw new Error(actualErrorMessage);
         }
         return res.json();
       })
@@ -904,13 +929,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
         }
       })
-      .catch((err) => {
+      .catch((err: any) => {
         console.error('Error connecting to /api/chat:', err);
-        // Render genuine error message in feed (no mock template generation)
+        const actualErrorMessage = err?.message || 'Error communicating with /api/chat service.';
+        const cleanContent = actualErrorMessage.startsWith('⚠️')
+          ? actualErrorMessage
+          : `⚠️ **Gemini API Error:** ${actualErrorMessage}`;
         const errorMsg: ChatMessage = {
           id: `err-${Date.now()}`,
           role: 'assistant',
-          content: `⚠️ **Unable to complete request:** ${err.message || 'Error communicating with /api/chat service.'}`,
+          content: cleanContent,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           domain,
         };
@@ -923,6 +951,157 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setIsGenerating(false);
       });
   }, [activeSessionId, panicLevel, allMessages, activeModel, addCalendarEvent]);
+
+  // Edit an existing user prompt, truncate downstream conversation, and resubmit to Gemini API
+  const editAndResubmitMessage = useCallback(
+    (messageId: string, newContent: string) => {
+      const trimmed = newContent.trim();
+      if (!trimmed) return;
+
+      const messages = allMessages[activeSessionId] || [];
+      const index = messages.findIndex((m) => m.id === messageId);
+      if (index === -1) return;
+
+      const originalMsg = messages[index];
+      const updatedUserMsg: ChatMessage = {
+        ...originalMsg,
+        content: trimmed,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+
+      // Truncate messages up to the edited user message (removes the old AI reply and subsequent turns)
+      const priorHistory = messages.slice(0, index);
+      const updatedList = [...priorHistory, updatedUserMsg];
+
+      setAllMessages((prev) => ({
+        ...prev,
+        [activeSessionId]: updatedList,
+      }));
+
+      // Update session title & preview if editing the first user message
+      if (index === 0) {
+        const title = trimmed.slice(0, 36) + (trimmed.length > 36 ? '...' : '');
+        const preview = trimmed.slice(0, 60);
+        setHistorySessions((prev) =>
+          prev.map((s) => (s.id === activeSessionId ? { ...s, title, preview } : s))
+        );
+      }
+
+      const sessionHistory = priorHistory
+        .slice(-10)
+        .map((m) => ({ role: m.role, content: m.content }));
+
+      const liveApiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+
+      setIsGenerating(true);
+
+      fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: trimmed,
+          prompt: trimmed,
+          domain: updatedUserMsg.domain || 'productivity',
+          currentPanicLevel: panicLevel,
+          attachments: updatedUserMsg.attachments || [],
+          history: sessionHistory,
+          model: activeModel,
+          apiKey: liveApiKey,
+        }),
+      })
+        .then(async (res) => {
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            const actualErrorMessage =
+              (typeof errData.details === 'string' && errData.details) ||
+              (typeof errData.error === 'string' && errData.error) ||
+              errData.error?.message ||
+              (typeof errData.message === 'string' ? errData.message : null) ||
+              (errData.message?.content ? errData.message.content : null) ||
+              `API server error: ${res.status}`;
+            throw new Error(actualErrorMessage);
+          }
+          return res.json();
+        })
+        .then((data) => {
+          let assistantMsg: ChatMessage | null = null;
+          if (data.message && typeof data.message === 'object') {
+            assistantMsg = data.message;
+          } else if (typeof data.message === 'string') {
+            assistantMsg = {
+              id: `ai-${Date.now()}`,
+              role: 'assistant',
+              content: data.message,
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              domain: updatedUserMsg.domain || 'productivity',
+            };
+          } else if (typeof data.content === 'string') {
+            assistantMsg = {
+              id: `ai-${Date.now()}`,
+              role: 'assistant',
+              content: data.content,
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              domain: updatedUserMsg.domain || 'productivity',
+            };
+          }
+
+          if (assistantMsg) {
+            setAllMessages((prev) => {
+              const current = prev[activeSessionId] || [];
+              const base = current.slice(0, index + 1);
+              return {
+                ...prev,
+                [activeSessionId]: [...base, assistantMsg!],
+              };
+            });
+
+            // Auto-schedule task & device alarm if deadline detected in prompt/chat response
+            if (assistantMsg.deadline) {
+              const dl = assistantMsg.deadline;
+              const daysOffset = dl.daysRemaining || 0;
+              const targetDateObj = new Date(Date.now() + daysOffset * 24 * 60 * 60 * 1000);
+              const dateFormatted = targetDateObj.toISOString().split('T')[0];
+
+              addCalendarEvent({
+                title: dl.subject || `Scheduled: ${dl.rawText}`,
+                date: dateFormatted,
+                category: 'deadline',
+                priority: dl.priority || 'high',
+                linkedSessionId: activeSessionId,
+                notes: `Auto-extracted deadline: ${dl.rawText}`,
+                alarmScheduled: true,
+              });
+            }
+          }
+        })
+        .catch((err: any) => {
+          console.error('Error connecting to /api/chat:', err);
+          const actualErrorMessage = err?.message || 'Error communicating with /api/chat service.';
+          const cleanContent = actualErrorMessage.startsWith('⚠️')
+            ? actualErrorMessage
+            : `⚠️ **Gemini API Error:** ${actualErrorMessage}`;
+          const errorMsg: ChatMessage = {
+            id: `err-${Date.now()}`,
+            role: 'assistant',
+            content: cleanContent,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            domain: updatedUserMsg.domain || 'productivity',
+          };
+          setAllMessages((prev) => {
+            const current = prev[activeSessionId] || [];
+            const base = current.slice(0, index + 1);
+            return {
+              ...prev,
+              [activeSessionId]: [...base, errorMsg],
+            };
+          });
+        })
+        .finally(() => {
+          setIsGenerating(false);
+        });
+    },
+    [activeSessionId, panicLevel, allMessages, activeModel, addCalendarEvent]
+  );
 
   return (
     <AppContext.Provider
@@ -946,6 +1125,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         createNewSession,
         currentMessages,
         sendMessage,
+        editAndResubmitMessage,
         isGenerating,
         isSidebarCollapsed,
         setIsSidebarCollapsed,

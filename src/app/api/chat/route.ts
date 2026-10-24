@@ -18,8 +18,14 @@ import {
   extractUserSpecifiedDeadline,
 } from '@/lib/externalServices';
 
-function getGeminiApiKey(): string {
-  return process.env.GEMINI_API_KEY || process.env.HEALTH_AI_API_KEY || '';
+function getGeminiApiKey(requestKey?: string): string {
+  return (
+    requestKey ||
+    process.env.GEMINI_API_KEY ||
+    process.env.NEXT_PUBLIC_GEMINI_API_KEY ||
+    process.env.HEALTH_AI_API_KEY ||
+    ''
+  );
 }
 
 function getTypesafeApiKey(): string {
@@ -150,6 +156,12 @@ Guidelines for your responses:
 2. Adapt seamlessly to the user's intent, tone, and depth:
    - If they say "hi", "hello", or engage in casual conversation, greet them back warmly, genuinely, and with high creative variety (ask what fascinating topic is on their mind, drop a witty remark, or ask how their day is unfolding, without giving a repetitive lecture or bulleted list of features).
    - If they ask a technical or coding query, provide clear explanations with complete, runnable code inside standard Markdown fenced code blocks with language identifiers (e.g. \`\`\`sql, \`\`\`typescript, \`\`\`python).
+   - Whenever a user asks for any diagram, circuit (such as AND, OR, NOT, NAND, NOR, XOR, XNOR logic gates), flowchart, ER diagram, system architecture, or visual illustration:
+     You MUST generate a clean, properly labeled, high-contrast visual <svg> graphic inside a \`\`\`svg ... \`\`\` code block.
+     * Styling specifications: Use high-contrast neon green, cyan, and white strokes (e.g., stroke="#10b981", stroke="#38bdf8", stroke="#ffffff", fill="none" or translucent fills like fill="#10b98120") on a dark background (#0a1210) with clear viewBox attributes (e.g., viewBox="0 0 600 240").
+     * Details: Draw crisp, well-proportioned input and output wires, standard ANSI/IEEE logic gate shapes or diagram blocks, clear terminal labels (A, B, Output Y), and complete digital logic truth tables in clean Markdown tables for every single gate or component requested.
+     * Completeness: Systematically provide the complete visual SVG diagram and truth table for every gate (all 7 gates when requested) without cutting off or omitting any gate mid-response.
+     * You may also accompany diagrams with Mermaid blocks (\`\`\`mermaid ... \`\`\`) or clean inline ASCII schematics.
    - If they ask about health or news, provide grounded, evidence-based insights.
 3. Format with clean, readable Markdown (headings, lists, bold text, code blocks) when appropriate, but keep conversational replies concise, engaging, and natural.`;
 
@@ -163,10 +175,15 @@ async function generateGeminiResponse(
   systemInstruction: string = UNIVERSAL_AI_SYSTEM_INSTRUCTION,
   history: ChatHistoryMessage[] = [],
   selectedModel: string = 'lmls-4',
-  attachments: any[] = []
-): Promise<string | null> {
-  const apiKey = getGeminiApiKey();
-  if (!apiKey) return null;
+  attachments: any[] = [],
+  clientApiKey?: string
+): Promise<string> {
+  const apiKey = getGeminiApiKey(clientApiKey);
+  if (!apiKey) {
+    throw new Error(
+      'Gemini API key is missing. Please configure GEMINI_API_KEY or NEXT_PUBLIC_GEMINI_API_KEY in your environment.'
+    );
+  }
 
   // Build alternating Gemini contents array from history + prompt
   const contents: Array<{ role: string; parts: Array<any> }> = [];
@@ -263,6 +280,8 @@ async function generateGeminiResponse(
 
   const finalSystemInstruction = `${systemInstruction}\n\n${modelDirective}\n\n${dynamicVarianceSeed}`;
 
+  let lastErrorMessage = '';
+
   for (const model of candidateModels) {
     // 1. Try with Google Search Grounding tool first
     try {
@@ -271,12 +290,12 @@ async function generateGeminiResponse(
         contents: Array<{ role: string; parts: Array<any> }>;
         tools?: Array<{ googleSearch: Record<string, never> }>;
         systemInstruction?: { parts: Array<{ text: string }> };
-        generationConfig: { temperature: number; topP: number };
+        generationConfig: { temperature: number; topP: number; maxOutputTokens: number };
       } = {
         contents,
         tools: [{ googleSearch: {} }],
         systemInstruction: { parts: [{ text: finalSystemInstruction }] },
-        generationConfig: { temperature: 1.0, topP: 0.95 },
+        generationConfig: { temperature: 1.0, topP: 0.95, maxOutputTokens: 8192 },
       };
 
       const res = await fetch(url, {
@@ -325,9 +344,38 @@ async function generateGeminiResponse(
         if (candidateText) {
           return candidateText.trim();
         }
+      } else {
+        const errJson = await res.json().catch(() => null);
+        const errMessage =
+          errJson?.error?.message ||
+          (typeof errJson?.error === 'string' ? errJson.error : null) ||
+          `Gemini API HTTP ${res.status}: ${res.statusText}`;
+        lastErrorMessage = errMessage;
+
+        // If the API key is invalid or unauthorized, fail immediately
+        if (
+          res.status === 400 &&
+          (errMessage.toLowerCase().includes('api key') ||
+           errMessage.toLowerCase().includes('key not valid') ||
+           errJson?.error?.status === 'INVALID_ARGUMENT')
+        ) {
+          throw new Error(errMessage);
+        }
+        if (res.status === 401 || res.status === 403) {
+          throw new Error(errMessage);
+        }
       }
-    } catch {
-      // Continue to try without tools on rate-limit/timeout
+    } catch (err: any) {
+      if (
+        err?.message &&
+        (err.message.toLowerCase().includes('api key') ||
+         err.message.toLowerCase().includes('key not valid') ||
+         err.message.includes('401') ||
+         err.message.includes('403'))
+      ) {
+        throw err;
+      }
+      lastErrorMessage = err?.message || String(err);
     }
 
     // 2. Fallback: Try the same model without tools (in case free-tier search tools quota is exhausted)
@@ -336,11 +384,11 @@ async function generateGeminiResponse(
       const payload: {
         contents: Array<{ role: string; parts: Array<any> }>;
         systemInstruction?: { parts: Array<{ text: string }> };
-        generationConfig: { temperature: number; topP: number };
+        generationConfig: { temperature: number; topP: number; maxOutputTokens: number };
       } = {
         contents,
         systemInstruction: { parts: [{ text: finalSystemInstruction }] },
-        generationConfig: { temperature: 1.0, topP: 0.95 },
+        generationConfig: { temperature: 1.0, topP: 0.95, maxOutputTokens: 8192 },
       };
 
       const res = await fetch(url, {
@@ -366,13 +414,41 @@ async function generateGeminiResponse(
         if (candidateText) {
           return candidateText.trim();
         }
+      } else {
+        const errJson = await res.json().catch(() => null);
+        const errMessage =
+          errJson?.error?.message ||
+          (typeof errJson?.error === 'string' ? errJson.error : null) ||
+          `Gemini API HTTP ${res.status}: ${res.statusText}`;
+        lastErrorMessage = errMessage;
+
+        if (
+          res.status === 400 &&
+          (errMessage.toLowerCase().includes('api key') ||
+           errMessage.toLowerCase().includes('key not valid') ||
+           errJson?.error?.status === 'INVALID_ARGUMENT')
+        ) {
+          throw new Error(errMessage);
+        }
+        if (res.status === 401 || res.status === 403) {
+          throw new Error(errMessage);
+        }
       }
-    } catch {
-      // Continue to next candidate model
+    } catch (err: any) {
+      if (
+        err?.message &&
+        (err.message.toLowerCase().includes('api key') ||
+         err.message.toLowerCase().includes('key not valid') ||
+         err.message.includes('401') ||
+         err.message.includes('403'))
+      ) {
+        throw err;
+      }
+      lastErrorMessage = err?.message || String(err);
     }
   }
 
-  return null;
+  throw new Error(lastErrorMessage || 'Gemini API failed to return a response.');
 }
 
 export async function POST(req: NextRequest) {
@@ -399,20 +475,15 @@ export async function POST(req: NextRequest) {
     // Extract deadline only if user explicitly provided a date or time in the prompt
     const userSpecifiedDeadline = extractUserSpecifiedDeadline(trimmedPrompt, currentPanicLevel);
 
-    // 100% of user queries (greetings, casual conversation, coding, math, health, creative, etc.)
-    // are routed directly to Gemini with temperature: 0.9 and conversation history.
-    const geminiText = await generateGeminiResponse(
+    // Normal live call to Google Gemini API (no fake/fallback responses)
+    const content = await generateGeminiResponse(
       trimmedPrompt,
       UNIVERSAL_AI_SYSTEM_INSTRUCTION,
       history,
       model,
-      attachments
+      attachments,
+      body.apiKey
     );
-
-    let content = geminiText;
-    if (!content) {
-      content = `I'm having trouble reaching the AI service right now. Please check your connection and try again in a moment.`;
-    }
 
     // Determine domain tag for message
     const lower = trimmedPrompt.toLowerCase();
@@ -532,8 +603,19 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: any) {
     console.error('Error in /api/chat route:', error);
+    const errorMessage = error?.message || 'Error communicating with Gemini API';
     return NextResponse.json(
-      { error: 'Internal server error processing query', details: error?.message },
+      {
+        error: errorMessage,
+        details: errorMessage,
+        message: {
+          id: `ai-err-${Date.now()}`,
+          role: 'assistant',
+          content: `⚠️ **Gemini API Error:** ${errorMessage}`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          domain: 'productivity',
+        },
+      },
       { status: 500 }
     );
   }
