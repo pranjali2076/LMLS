@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import {
@@ -14,6 +14,7 @@ import {
   LogOut,
   Calendar,
   Cloud,
+  X,
 } from 'lucide-react';
 import { getModelConfig } from '@/data/models';
 
@@ -38,6 +39,13 @@ export default function AppSidebar() {
 
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Auto-collapse sidebar by default on mobile phones & portrait tablets (< 768px)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      setIsSidebarCollapsed(true);
+    }
+  }, [setIsSidebarCollapsed]);
+
   const userDisplayName = user?.name || 'Alex Rivera';
   const userInitial = userDisplayName.charAt(0).toUpperCase();
   const userSubtitle = user?.role || user?.email || 'Senior Research Architect';
@@ -56,63 +64,98 @@ export default function AppSidebar() {
   );
 
   return (
-    <aside
-      className={`relative z-30 flex flex-col h-full bg-[#0b1320]/75 backdrop-blur-2xl border-r border-white/10 transition-all duration-300 select-none shadow-2xl ${
-        isSidebarCollapsed ? 'w-20' : 'w-72 sm:w-80'
-      }`}
-    >
-      {/* 1. Header: Glowing Emerald LMLS Sparkle Logo Toggle (Clicking opens/closes sidebar) */}
-      {isSidebarCollapsed ? (
-        <div className="flex flex-col items-center py-4 px-2 border-b border-white/10">
-          <button
-            type="button"
-            id="sidebar-logo-toggle-collapsed"
-            onClick={() => setIsSidebarCollapsed(false)}
-            className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-emerald-500 via-teal-500 to-cyan-500 text-slate-950 flex items-center justify-center shrink-0 shadow-lg shadow-emerald-500/25 ring-2 ring-emerald-500/30 hover:scale-105 active:scale-95 transition-all cursor-pointer group"
-            title="LMLS Cognitive AI • Click to expand sidebar"
-            aria-label="Expand sidebar"
-          >
-            <Sparkles className="w-5 h-5 text-slate-950 group-hover:rotate-12 transition-transform" />
-          </button>
-        </div>
-      ) : (
-        <div className="p-4 pb-3 border-b border-white/10">
-          <div
-            role="button"
-            tabIndex={0}
-            id="sidebar-logo-toggle-expanded"
-            onClick={() => setIsSidebarCollapsed(true)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') setIsSidebarCollapsed(true);
-            }}
-            className="flex items-center gap-3 cursor-pointer group select-none transition-transform hover:opacity-95"
-            title="LMLS Cognitive v2.4 Enterprise"
-            aria-label="LMLS Cognitive"
-          >
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 via-teal-500 to-cyan-500 text-slate-950 flex items-center justify-center shrink-0 shadow-lg shadow-emerald-500/25 ring-2 ring-emerald-500/30 group-hover:scale-105 transition-transform">
-              <Sparkles className="w-5 h-5 text-slate-950 group-hover:rotate-12 transition-transform" />
-            </div>
-            <div className="flex flex-col min-w-0">
-              <span className="font-bold text-sm tracking-tight text-white flex items-center gap-1.5 leading-none">
-                LMLS <span className="text-emerald-400">Cognitive</span>
-              </span>
-              <span className="text-[10px] text-slate-400 font-mono leading-none mt-1.5">
-                v2.4 Enterprise
-              </span>
-            </div>
-          </div>
-        </div>
+    <>
+      {/* Mobile Drawer Backdrop Overlay */}
+      {!isSidebarCollapsed && (
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label="Close sidebar drawer"
+          onClick={() => setIsSidebarCollapsed(true)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape' || e.key === 'Enter') setIsSidebarCollapsed(true);
+          }}
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-40 md:hidden transition-opacity cursor-pointer animate-in fade-in duration-200"
+        />
       )}
 
-      {/* 2. Bright Emerald-Green "+ New Session" Button */}
-      <div className="p-3 border-b border-white/10">
-        <button
-          type="button"
-          id="new-query-btn"
-          onClick={() => createNewSession('academic')}
-          className={`flex items-center justify-center gap-2 rounded-xl font-semibold text-xs text-slate-950 bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 active:scale-95 transition-all ${
-            isSidebarCollapsed ? 'w-10 h-10 p-0 mx-auto' : 'w-full py-2.5 px-3'
-          }`}
+      <aside
+        className={`fixed md:relative inset-y-0 left-0 z-50 md:z-30 flex flex-col h-[100dvh] md:h-full bg-[#0b1320]/95 md:bg-[#0b1320]/75 backdrop-blur-2xl border-r border-white/10 transition-all duration-300 select-none shadow-2xl ${
+          isSidebarCollapsed
+            ? '-translate-x-full md:translate-x-0 md:w-20'
+            : 'translate-x-0 w-72 sm:w-80 md:w-72 lg:w-72'
+        }`}
+      >
+        {/* 1. Header: Glowing Emerald LMLS Sparkle Logo Toggle (Clicking opens/closes sidebar) */}
+        {isSidebarCollapsed ? (
+          <div className="flex flex-col items-center py-4 px-2 border-b border-white/10">
+            <button
+              type="button"
+              id="sidebar-logo-toggle-collapsed"
+              onClick={() => setIsSidebarCollapsed(false)}
+              className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-emerald-500 via-teal-500 to-cyan-500 text-slate-950 flex items-center justify-center shrink-0 shadow-lg shadow-emerald-500/25 ring-2 ring-emerald-500/30 hover:scale-105 active:scale-95 transition-all cursor-pointer group"
+              title="LMLS Cognitive AI • Click to expand sidebar"
+              aria-label="Expand sidebar"
+            >
+              <Sparkles className="w-5 h-5 text-slate-950 group-hover:rotate-12 transition-transform" />
+            </button>
+          </div>
+        ) : (
+          <div className="p-4 pb-3 border-b border-white/10">
+            <div className="flex items-center justify-between w-full">
+              <div
+                role="button"
+                tabIndex={0}
+                id="sidebar-logo-toggle-expanded"
+                onClick={() => setIsSidebarCollapsed(true)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') setIsSidebarCollapsed(true);
+                }}
+                className="flex items-center gap-3 cursor-pointer group select-none transition-transform hover:opacity-95"
+                title="LMLS Cognitive v2.4 Enterprise"
+                aria-label="LMLS Cognitive"
+              >
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 via-teal-500 to-cyan-500 text-slate-950 flex items-center justify-center shrink-0 shadow-lg shadow-emerald-500/25 ring-2 ring-emerald-500/30 group-hover:scale-105 transition-transform">
+                  <Sparkles className="w-5 h-5 text-slate-950 group-hover:rotate-12 transition-transform" />
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="font-bold text-sm tracking-tight text-white flex items-center gap-1.5 leading-none">
+                    LMLS <span className="text-emerald-400">Cognitive</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono leading-none mt-1.5">
+                    v2.4 Enterprise
+                  </span>
+                </div>
+              </div>
+
+              {/* Mobile Close Button */}
+              <button
+                type="button"
+                onClick={() => setIsSidebarCollapsed(true)}
+                className="md:hidden p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors"
+                title="Close drawer"
+                aria-label="Close drawer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 2. Bright Emerald-Green "+ New Session" Button */}
+        <div className="p-3 border-b border-white/10">
+          <button
+            type="button"
+            id="new-query-btn"
+            onClick={() => {
+              createNewSession('academic');
+              if (typeof window !== 'undefined' && window.innerWidth < 768) {
+                setIsSidebarCollapsed(true);
+              }
+            }}
+            className={`flex items-center justify-center gap-2 rounded-xl font-semibold text-xs text-slate-950 bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 active:scale-95 transition-all ${
+              isSidebarCollapsed ? 'w-10 h-10 p-0 mx-auto' : 'w-full py-2.5 px-3'
+            }`}
           title="New Session"
         >
           <Plus className="w-4 h-4" />
@@ -208,7 +251,12 @@ export default function AppSidebar() {
             return (
               <div
                 key={sess.id}
-                onClick={() => setActiveSessionId(sess.id)}
+                onClick={() => {
+                  setActiveSessionId(sess.id);
+                  if (typeof window !== 'undefined' && window.innerWidth < 768) {
+                    setIsSidebarCollapsed(true);
+                  }
+                }}
                 className={`group relative flex items-center justify-between rounded-xl px-3 py-2 text-xs transition-all duration-150 cursor-pointer border ${
                   isActive
                     ? 'bg-slate-800/80 text-white font-medium border-emerald-500/30 shadow-md shadow-emerald-500/5'
@@ -342,5 +390,6 @@ export default function AppSidebar() {
         </div>
       )}
     </aside>
+    </>
   );
 }

@@ -312,7 +312,7 @@ export default function UniversalInput() {
 
   return (
     <div
-      className="w-full max-w-3xl mx-auto px-4 pb-4 sm:pb-6"
+      className="w-full max-w-3xl mx-auto px-3 sm:px-4 pb-3 sm:pb-6 pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}

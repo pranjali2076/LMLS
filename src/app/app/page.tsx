@@ -32,7 +32,7 @@ export default function AppPage() {
   // While verifying stored Google session or if unauthenticated, block access to the workspace
   if (isAuthLoading || !isAuthenticated) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-[#070b12] text-slate-300 select-none">
+      <div className="flex h-[100dvh] min-h-[100dvh] w-full items-center justify-center bg-[#070b12] text-slate-300 select-none">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-500 via-teal-500 to-cyan-500 text-slate-950 flex items-center justify-center shadow-lg shadow-emerald-500/20 ring-4 ring-emerald-500/10">
             <svg className="animate-spin h-6 w-6 text-slate-950" viewBox="0 0 24 24" fill="none">
@@ -50,7 +50,7 @@ export default function AppPage() {
   }
 
   return (
-    <div className="relative flex h-screen w-screen overflow-hidden bg-[#070b12] text-slate-100">
+    <div className="relative flex h-[100dvh] min-h-[100dvh] max-h-[100dvh] w-full overflow-hidden bg-[#070b12] text-slate-100">
       {/* Ambient background glows */}
       <div className="absolute top-10 right-1/4 w-[500px] h-[500px] bg-emerald-500/10 rounded-full blur-[130px] pointer-events-none" />
       <div className="absolute bottom-20 left-1/4 w-[500px] h-[500px] bg-cyan-500/10 rounded-full blur-[130px] pointer-events-none" />
@@ -85,12 +85,12 @@ export default function AppPage() {
         )}
 
         {/* Multi-Domain Response Feed Area */}
-        <main className="flex-1 overflow-y-auto relative flex flex-col">
+        <main className="flex-1 overflow-y-auto relative flex flex-col min-h-0">
           <ResponseFeed />
         </main>
 
-        {/* Multimodal Universal Input Bar (Floating Glass Pill at Bottom) */}
-        <footer className="w-full shrink-0 z-20">
+        {/* Multimodal Universal Input Bar (Floating Glass Pill at Bottom with safe area padding) */}
+        <footer className="w-full shrink-0 z-20 pb-[env(safe-area-inset-bottom)]">
           <UniversalInput />
         </footer>
       </div>

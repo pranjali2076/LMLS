@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useApp } from '@/context/AppContext';
 import { ChatMessage, CodeSnippet, MathFormulaBlock, HealthMeta, NewsMeta, WikiMeta, DeadlineInfo } from '@/types';
 import {
@@ -171,7 +171,7 @@ export default function ResponseFeed() {
   const firstName = user?.name ? user.name.split(' ')[0] : 'there';
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 max-w-4xl mx-auto w-full">
+    <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-4 sm:py-6 max-w-4xl mx-auto w-full min-h-0">
       {/* 1. Emerald Glass Hero Screen (Empty Chat) */}
       {currentMessages.length === 0 && (
         <div className="flex-1 flex flex-col justify-center min-h-[65vh] py-8 select-none">
@@ -445,7 +445,7 @@ function MessageCard({
     if (isEditing) {
       return (
         <div className="flex justify-end mb-6 w-full animate-in fade-in duration-200">
-          <div className="w-full max-w-2xl bg-[#0e171b]/95 backdrop-blur-xl border border-emerald-500/40 rounded-3xl rounded-tr-sm p-4 sm:p-5 shadow-2xl shadow-emerald-950/40 ring-1 ring-emerald-500/30">
+          <div className="w-full max-w-[92%] sm:max-w-[85%] md:max-w-[78%] lg:max-w-2xl bg-[#0e171b]/95 backdrop-blur-xl border border-emerald-500/40 rounded-3xl rounded-tr-sm p-4 sm:p-5 shadow-2xl shadow-emerald-950/40 ring-1 ring-emerald-500/30">
             <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-emerald-500/20 text-xs text-emerald-400 font-medium">
               <span className="flex items-center gap-1.5 font-semibold tracking-wide">
                 <Edit3 className="w-3.5 h-3.5 text-emerald-400" /> Edit Prompt
@@ -477,7 +477,7 @@ function MessageCard({
                 type="button"
                 id={`cancel-edit-${message.id}`}
                 onClick={handleCancelEdit}
-                className="px-3.5 py-1.5 rounded-xl text-xs font-medium text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/60 transition-all cursor-pointer select-none"
+                className="min-h-[36px] px-3.5 py-1.5 rounded-xl text-xs font-medium text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/60 transition-all cursor-pointer select-none"
               >
                 Cancel
               </button>
@@ -487,7 +487,7 @@ function MessageCard({
                 id={`submit-edit-${message.id}`}
                 onClick={handleSaveAndSubmit}
                 disabled={!editText.trim() || isGenerating}
-                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-semibold text-slate-950 bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-300 hover:from-emerald-300 hover:to-teal-200 shadow-md shadow-emerald-500/25 transition-all cursor-pointer select-none disabled:opacity-40 disabled:cursor-not-allowed hover:scale-[1.02] active:scale-[0.98]"
+                className="min-h-[36px] inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-semibold text-slate-950 bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-300 hover:from-emerald-300 hover:to-teal-200 shadow-md shadow-emerald-500/25 transition-all cursor-pointer select-none disabled:opacity-40 disabled:cursor-not-allowed hover:scale-[1.02] active:scale-[0.98]"
               >
                 <Sparkles className="w-3.5 h-3.5 text-slate-950" />
                 <span>Save &amp; Submit</span>
@@ -499,8 +499,8 @@ function MessageCard({
     }
 
     return (
-      <div className="flex flex-col items-end mb-6 animate-in fade-in duration-200 group">
-        <div className="max-w-2xl bg-emerald-500/15 backdrop-blur-md border border-emerald-500/30 text-slate-100 rounded-3xl rounded-tr-sm px-5 py-3.5 shadow-lg shadow-emerald-950/20 text-sm sm:text-base leading-relaxed relative">
+      <div className="flex flex-col items-end mb-6 animate-in fade-in duration-200 group w-full">
+        <div className="max-w-[92%] sm:max-w-[85%] md:max-w-[78%] lg:max-w-2xl bg-emerald-500/15 backdrop-blur-md border border-emerald-500/30 text-slate-100 rounded-3xl rounded-tr-sm px-4 sm:px-5 py-3 sm:py-3.5 shadow-lg shadow-emerald-950/20 text-sm sm:text-base leading-relaxed relative">
           <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
 
           {/* User Attached media chips */}
@@ -526,7 +526,7 @@ function MessageCard({
             type="button"
             id={`copy-user-msg-${message.id}`}
             onClick={handleUserCopy}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-900/70 hover:bg-emerald-950/50 text-slate-400 hover:text-emerald-300 border border-emerald-500/15 hover:border-emerald-500/40 backdrop-blur-md transition-all shadow-sm cursor-pointer select-none"
+            className="min-h-[36px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-900/70 hover:bg-emerald-950/50 text-slate-400 hover:text-emerald-300 border border-emerald-500/15 hover:border-emerald-500/40 backdrop-blur-md transition-all shadow-sm cursor-pointer select-none"
             title="Copy message"
           >
             {userCopied ? (
@@ -551,7 +551,7 @@ function MessageCard({
               setIsEditing(true);
             }}
             disabled={isGenerating}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-900/70 hover:bg-emerald-950/50 text-slate-400 hover:text-emerald-300 border border-emerald-500/15 hover:border-emerald-500/40 backdrop-blur-md transition-all shadow-sm cursor-pointer select-none disabled:opacity-40 disabled:cursor-not-allowed"
+            className="min-h-[36px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-900/70 hover:bg-emerald-950/50 text-slate-400 hover:text-emerald-300 border border-emerald-500/15 hover:border-emerald-500/40 backdrop-blur-md transition-all shadow-sm cursor-pointer select-none disabled:opacity-40 disabled:cursor-not-allowed"
             title="Edit and resubmit message"
           >
             <Edit3 className="w-3.5 h-3.5" />
@@ -613,13 +613,13 @@ function MessageCard({
         {message.wikiMeta && <WikipediaCard wiki={message.wikiMeta} />}
 
         {/* LMLS Cognitive Multi-Action Toolbar */}
-        <div className="pt-3 flex flex-wrap items-center gap-2 text-slate-400 border-t border-white/5">
+        <div className="pt-3 flex flex-wrap items-center gap-1.5 sm:gap-2 text-slate-400 border-t border-white/5">
           {/* 1. 📄 Export PDF Button */}
           <button
             type="button"
             id={`export-pdf-btn-${message.id}`}
             onClick={onExportPdf}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 transition-all hover:border-emerald-500/60 shadow-sm cursor-pointer select-none"
+            className="min-h-[36px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 transition-all hover:border-emerald-500/60 shadow-sm cursor-pointer select-none"
             title="Export clean, formatted printable PDF"
           >
             <FileDown className="w-3.5 h-3.5 text-emerald-400" />
@@ -631,7 +631,7 @@ function MessageCard({
             type="button"
             id={`save-drive-btn-${message.id}`}
             onClick={onSaveToDrive}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-teal-500/10 hover:bg-teal-500/20 text-teal-300 border border-teal-500/30 transition-all hover:border-teal-500/60 shadow-sm cursor-pointer select-none"
+            className="min-h-[36px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-teal-500/10 hover:bg-teal-500/20 text-teal-300 border border-teal-500/30 transition-all hover:border-teal-500/60 shadow-sm cursor-pointer select-none"
             title="Save as structured document to Cloud Drive"
           >
             <FolderPlus className="w-3.5 h-3.5 text-teal-400" />
@@ -643,7 +643,7 @@ function MessageCard({
             type="button"
             id={`listen-audio-btn-${message.id}`}
             onClick={onToggleListen}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all shadow-sm cursor-pointer select-none ${
+            className={`min-h-[36px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all shadow-sm cursor-pointer select-none ${
               isSpeaking
                 ? 'bg-rose-500/25 text-rose-300 border-rose-500/60 ring-2 ring-rose-500/30 animate-pulse'
                 : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white border-white/10 hover:border-emerald-500/30'
@@ -669,7 +669,7 @@ function MessageCard({
               type="button"
               id={`schedule-alarm-btn-${message.id}`}
               onClick={onScheduleAlarm}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 transition-all hover:border-amber-500/60 shadow-sm cursor-pointer select-none"
+              className="min-h-[36px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 transition-all hover:border-amber-500/60 shadow-sm cursor-pointer select-none"
               title="Schedule deadline & trigger device alarm reminder"
             >
               <Bell className="w-3.5 h-3.5 text-amber-400" />
@@ -681,7 +681,7 @@ function MessageCard({
           <button
             type="button"
             onClick={onCopy}
-            className={`p-2 rounded-full transition-colors cursor-pointer select-none ${
+            className={`min-h-[36px] min-w-[36px] inline-flex items-center justify-center p-2 rounded-full transition-colors cursor-pointer select-none ${
               isCopied
                 ? 'bg-emerald-500/20 text-emerald-300'
                 : 'hover:bg-slate-800 hover:text-slate-200'
@@ -696,7 +696,7 @@ function MessageCard({
             type="button"
             id={`share-response-btn-${message.id}`}
             onClick={onShare}
-            className="p-2 rounded-full hover:bg-slate-800 hover:text-slate-200 transition-colors cursor-pointer select-none"
+            className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center p-2 rounded-full hover:bg-slate-800 hover:text-slate-200 transition-colors cursor-pointer select-none"
             title="Share response & session link"
           >
             <Share2 className="w-4 h-4" />
@@ -705,14 +705,14 @@ function MessageCard({
           {/* Feedback buttons */}
           <button
             type="button"
-            className="p-2 rounded-full hover:bg-slate-800 hover:text-slate-200 transition-colors cursor-pointer select-none"
+            className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center p-2 rounded-full hover:bg-slate-800 hover:text-slate-200 transition-colors cursor-pointer select-none"
             title="Helpful response"
           >
             <ThumbsUp className="w-3.5 h-3.5" />
           </button>
           <button
             type="button"
-            className="p-2 rounded-full hover:bg-slate-800 hover:text-slate-200 transition-colors cursor-pointer select-none"
+            className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center p-2 rounded-full hover:bg-slate-800 hover:text-slate-200 transition-colors cursor-pointer select-none"
             title="Needs improvement"
           >
             <ThumbsDown className="w-3.5 h-3.5" />
@@ -850,130 +850,425 @@ function MermaidRenderer({ code }: { code: string }) {
 }
 
 // -------------------------------------------------------------
+// Helper to detect specific logic gate from text
+// -------------------------------------------------------------
+function detectLogicGate(text: string): string | null {
+  const t = text || '';
+  // Specific unambiguous gate names
+  const specificMatch = t.match(/\b(XNOR|NAND|XOR|NOR)\b/i);
+  if (specificMatch) return specificMatch[1].toUpperCase();
+
+  // For AND, OR, NOT: check for gate keyword or uppercase in circuit context
+  const gatePhraseMatch = t.match(/\b(AND|OR|NOT)\s*(?:gate|logic|circuit|schematic|symbol|diagram)?\b/i);
+  if (gatePhraseMatch) {
+    const word = gatePhraseMatch[1].toUpperCase();
+    if (/gate|circuit|logic|schematic|symbol/i.test(t) || new RegExp(`\\b${word}\\b`).test(t)) {
+      return word;
+    }
+  }
+  return null;
+}
+
+// -------------------------------------------------------------
+// Built-in High-Precision IEEE/ANSI Logic Gate Schematics
+// -------------------------------------------------------------
+function getBuiltinLogicGateSvg(gateType: string): string {
+  const g = (gateType || 'AND').toUpperCase().trim();
+
+  let equation = 'Y = A · B';
+  let isNot = g === 'NOT';
+  let symbolMarkup = '';
+
+  if (g === 'AND') {
+    equation = 'Y = A · B';
+    symbolMarkup = `
+      <!-- AND Gate Body -->
+      <path d="M 190 65 L 260 65 A 70 70 0 0 1 260 205 L 190 205 Z" fill="#10b98118" stroke="#10b981" stroke-width="2.5" stroke-linejoin="round" />
+      <text x="238" y="141" text-anchor="middle" fill="#ffffff" font-family="monospace" font-size="16" font-weight="bold">AND</text>
+      <!-- Output wire -->
+      <line x1="330" y1="135" x2="425" y2="135" stroke="#10b981" stroke-width="2.5" />
+      <circle cx="425" cy="135" r="5" fill="#38bdf8" />
+    `;
+  } else if (g === 'OR') {
+    equation = 'Y = A + B';
+    symbolMarkup = `
+      <!-- OR Gate Body -->
+      <path d="M 185 65 Q 225 135 185 205 Q 280 205 345 135 Q 280 65 185 65 Z" fill="#10b98118" stroke="#10b981" stroke-width="2.5" stroke-linejoin="round" />
+      <text x="245" y="141" text-anchor="middle" fill="#ffffff" font-family="monospace" font-size="16" font-weight="bold">OR</text>
+      <!-- Output wire -->
+      <line x1="345" y1="135" x2="425" y2="135" stroke="#10b981" stroke-width="2.5" />
+      <circle cx="425" cy="135" r="5" fill="#38bdf8" />
+    `;
+  } else if (g === 'NOT') {
+    equation = 'Y = A̅ (NOT A)';
+    isNot = true;
+    symbolMarkup = `
+      <!-- NOT Gate Triangle -->
+      <polygon points="200,75 310,135 200,195" fill="#10b98118" stroke="#10b981" stroke-width="2.5" stroke-linejoin="round" />
+      <text x="240" y="141" text-anchor="middle" fill="#ffffff" font-family="monospace" font-size="15" font-weight="bold">NOT</text>
+      <!-- Inversion Bubble -->
+      <circle cx="321" cy="135" r="10" fill="#071310" stroke="#10b981" stroke-width="2.5" />
+      <!-- Output wire -->
+      <line x1="331" y1="135" x2="425" y2="135" stroke="#10b981" stroke-width="2.5" />
+      <circle cx="425" cy="135" r="5" fill="#38bdf8" />
+    `;
+  } else if (g === 'NAND') {
+    equation = 'Y = (A · B)̅';
+    symbolMarkup = `
+      <!-- NAND Gate Body -->
+      <path d="M 190 65 L 260 65 A 70 70 0 0 1 260 205 L 190 205 Z" fill="#10b98118" stroke="#10b981" stroke-width="2.5" stroke-linejoin="round" />
+      <text x="235" y="141" text-anchor="middle" fill="#ffffff" font-family="monospace" font-size="15" font-weight="bold">NAND</text>
+      <!-- Inversion Bubble -->
+      <circle cx="341" cy="135" r="10" fill="#071310" stroke="#10b981" stroke-width="2.5" />
+      <!-- Output wire -->
+      <line x1="351" y1="135" x2="425" y2="135" stroke="#10b981" stroke-width="2.5" />
+      <circle cx="425" cy="135" r="5" fill="#38bdf8" />
+    `;
+  } else if (g === 'NOR') {
+    equation = 'Y = (A + B)̅';
+    symbolMarkup = `
+      <!-- NOR Gate Body -->
+      <path d="M 185 65 Q 225 135 185 205 Q 280 205 345 135 Q 280 65 185 65 Z" fill="#10b98118" stroke="#10b981" stroke-width="2.5" stroke-linejoin="round" />
+      <text x="245" y="141" text-anchor="middle" fill="#ffffff" font-family="monospace" font-size="15" font-weight="bold">NOR</text>
+      <!-- Inversion Bubble -->
+      <circle cx="356" cy="135" r="10" fill="#071310" stroke="#10b981" stroke-width="2.5" />
+      <!-- Output wire -->
+      <line x1="366" y1="135" x2="425" y2="135" stroke="#10b981" stroke-width="2.5" />
+      <circle cx="425" cy="135" r="5" fill="#38bdf8" />
+    `;
+  } else if (g === 'XOR') {
+    equation = 'Y = A ⊕ B';
+    symbolMarkup = `
+      <!-- XOR Extra Curved Input Arc -->
+      <path d="M 170 65 Q 210 135 170 205" fill="none" stroke="#10b981" stroke-width="2.5" />
+      <!-- XOR Main Body -->
+      <path d="M 188 65 Q 228 135 188 205 Q 285 205 350 135 Q 285 65 188 65 Z" fill="#10b98118" stroke="#10b981" stroke-width="2.5" stroke-linejoin="round" />
+      <text x="250" y="141" text-anchor="middle" fill="#ffffff" font-family="monospace" font-size="15" font-weight="bold">XOR</text>
+      <!-- Output wire -->
+      <line x1="350" y1="135" x2="425" y2="135" stroke="#10b981" stroke-width="2.5" />
+      <circle cx="425" cy="135" r="5" fill="#38bdf8" />
+    `;
+  } else if (g === 'XNOR') {
+    equation = 'Y = (A ⊕ B)̅';
+    symbolMarkup = `
+      <!-- XNOR Extra Curved Input Arc -->
+      <path d="M 170 65 Q 210 135 170 205" fill="none" stroke="#10b981" stroke-width="2.5" />
+      <!-- XNOR Main Body -->
+      <path d="M 188 65 Q 228 135 188 205 Q 285 205 350 135 Q 285 65 188 65 Z" fill="#10b98118" stroke="#10b981" stroke-width="2.5" stroke-linejoin="round" />
+      <text x="248" y="141" text-anchor="middle" fill="#ffffff" font-family="monospace" font-size="14" font-weight="bold">XNOR</text>
+      <!-- Inversion Bubble -->
+      <circle cx="361" cy="135" r="10" fill="#071310" stroke="#10b981" stroke-width="2.5" />
+      <!-- Output wire -->
+      <line x1="371" y1="135" x2="425" y2="135" stroke="#10b981" stroke-width="2.5" />
+      <circle cx="425" cy="135" r="5" fill="#38bdf8" />
+    `;
+  } else {
+    equation = 'Y = Output';
+    symbolMarkup = `
+      <rect x="190" y="70" width="150" height="130" rx="8" fill="#10b98118" stroke="#10b981" stroke-width="2.5" />
+      <text x="265" y="141" text-anchor="middle" fill="#ffffff" font-family="monospace" font-size="15" font-weight="bold">${g}</text>
+      <line x1="340" y1="135" x2="425" y2="135" stroke="#10b981" stroke-width="2.5" />
+      <circle cx="425" cy="135" r="5" fill="#38bdf8" />
+    `;
+  }
+
+  const inputWires = isNot
+    ? `
+      <line x1="60" y1="135" x2="200" y2="135" stroke="#10b981" stroke-width="2.5" />
+      <circle cx="60" cy="135" r="5" fill="#38bdf8" />
+      <text x="36" y="141" fill="#38bdf8" font-family="monospace" font-size="17" font-weight="bold" text-anchor="middle">A</text>
+    `
+    : `
+      <line x1="60" y1="95" x2="190" y2="95" stroke="#10b981" stroke-width="2.5" />
+      <circle cx="60" cy="95" r="5" fill="#38bdf8" />
+      <text x="36" y="101" fill="#38bdf8" font-family="monospace" font-size="17" font-weight="bold" text-anchor="middle">A</text>
+
+      <line x1="60" y1="175" x2="190" y2="175" stroke="#10b981" stroke-width="2.5" />
+      <circle cx="60" cy="175" r="5" fill="#38bdf8" />
+      <text x="36" y="181" fill="#38bdf8" font-family="monospace" font-size="17" font-weight="bold" text-anchor="middle">B</text>
+    `;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 260" preserveAspectRatio="xMidYMid meet" width="100%" height="auto" style="width: 100%; height: auto; aspect-ratio: 16 / 7; max-height: 360px; min-height: 160px; display: block; overflow: visible;">
+  <!-- Background Canvas -->
+  <rect width="100%" height="100%" fill="#071310" rx="10" />
+
+  <!-- Technical Grid -->
+  <defs>
+    <pattern id="grid-${g.toLowerCase()}" width="20" height="20" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1" fill="#10b98120" />
+    </pattern>
+  </defs>
+  <rect width="100%" height="100%" fill="url(#grid-${g.toLowerCase()})" rx="10" />
+
+  <!-- Header Banner -->
+  <text x="30" y="36" fill="#10b981" font-family="monospace" font-size="13" font-weight="bold" letter-spacing="1">⚡ ANSI/IEEE SCHEMATIC: ${g} GATE</text>
+
+  <!-- Input Wires -->
+  ${inputWires}
+
+  <!-- Gate Body & Symbol -->
+  ${symbolMarkup}
+
+  <!-- Output Label -->
+  <text x="445" y="141" fill="#ffffff" font-family="monospace" font-size="16" font-weight="bold">${equation}</text>
+</svg>`;
+}
+
+// -------------------------------------------------------------
+// SVG Normalizer (Ensures 100% Visibility, High Contrast & Responsive ViewBox)
+// -------------------------------------------------------------
+function normalizeSvg(raw: string, titleHint = ''): string {
+  let clean = (raw || '').trim();
+
+  // 1. Try extracting <svg ... </svg>
+  const svgMatch = clean.match(/<svg[\s\S]*?<\/svg>/i);
+  if (svgMatch) {
+    clean = svgMatch[0].trim();
+  }
+
+  // 2. Built-in logic gate detection: AND, OR, NOT, NAND, NOR, XOR, XNOR
+  const detectedGate = detectLogicGate(`${titleHint} ${clean}`);
+  const hasDrawElements = /<(path|line|circle|polygon|polyline|rect)[\s>]/i.test(clean);
+  const isValidSvg = clean.includes('<svg') && clean.includes('</svg>') && hasDrawElements && clean.length >= 60;
+
+  // Fall back to clean, built-in ANSI/IEEE standard SVG schematic if:
+  // - It describes a logic gate (AND, OR, NOT, NAND, NOR, XOR, XNOR)
+  // - Or the diagram block is empty or malformed
+  if (detectedGate) {
+    // If it's a specific logic gate and not a complex multi-gate circuit
+    const isMultiGateComplexCircuit = isValidSvg && clean.length > 600 && (clean.match(/<(path|polygon|line)\b/g) || []).length > 8;
+    if (!isMultiGateComplexCircuit) {
+      return getBuiltinLogicGateSvg(detectedGate);
+    }
+  }
+
+  // If not a logic gate but empty or malformed, provide clean fallback diagram
+  if (!isValidSvg) {
+    const displayLabel = titleHint || clean.replace(/```/g, '').trim().slice(0, 80) || 'Visual Diagram';
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 260" preserveAspectRatio="xMidYMid meet" width="100%" height="auto" style="width: 100%; height: auto; aspect-ratio: 16 / 7; max-height: 360px; min-height: 160px; display: block; overflow: visible;">
+  <rect width="100%" height="100%" fill="#071310" rx="10" />
+  <rect x="30" y="30" width="540" height="200" rx="8" fill="#10b98110" stroke="#10b981" stroke-width="2" stroke-dasharray="4 4" />
+  <text x="300" y="120" text-anchor="middle" fill="#10b981" font-family="monospace" font-size="15" font-weight="bold">⚡ VISUAL SCHEMATIC</text>
+  <text x="300" y="155" text-anchor="middle" fill="#ffffff" font-family="monospace" font-size="14">${displayLabel.replace(/<[^>]*>/g, '')}</text>
+</svg>`;
+  }
+
+  // 3. Ensure xmlns="http://www.w3.org/2000/svg" is present on the <svg> tag
+  if (!clean.includes('xmlns=')) {
+    clean = clean.replace(/<svg\b/i, '<svg xmlns="http://www.w3.org/2000/svg"');
+  }
+
+  // 4. Ensure viewBox is present (default: "0 0 600 260")
+  if (!clean.includes('viewBox')) {
+    const wMatch = clean.match(/width=["']?(\d+)/i);
+    const hMatch = clean.match(/height=["']?(\d+)/i);
+    if (wMatch && hMatch) {
+      clean = clean.replace(/<svg\b/i, `<svg viewBox="0 0 ${wMatch[1]} ${hMatch[1]}"`);
+    } else {
+      clean = clean.replace(/<svg\b/i, '<svg viewBox="0 0 600 260"');
+    }
+  }
+
+  // 4b. Ensure preserveAspectRatio="xMidYMid meet" is present
+  if (!clean.includes('preserveAspectRatio')) {
+    clean = clean.replace(/<svg\b/i, '<svg preserveAspectRatio="xMidYMid meet"');
+  }
+
+  // 5. Force explicit responsive sizing on root <svg> element
+  clean = clean.replace(/<svg\b([^>]*)>/i, (_m, attrs) => {
+    const cleanAttrs = attrs
+      .replace(/\bwidth=["'][^"']*["']/gi, '')
+      .replace(/\bheight=["'][^"']*["']/gi, '')
+      .replace(/\bstyle=["'][^"']*["']/gi, '')
+      .trim();
+    return `<svg ${cleanAttrs} width="100%" height="auto" style="width: 100%; height: auto; aspect-ratio: 16 / 7; max-height: 360px; min-height: 160px; display: block; overflow: visible;">`;
+  });
+
+  // Ensure dark #071310 background canvas rect is present inside the SVG
+  if (!clean.includes('fill="#071310"') && !clean.includes('fill=\'#071310\'')) {
+    clean = clean.replace(/<svg\b([^>]*)>/i, `<svg $1>\n  <rect width="100%" height="100%" fill="#071310" rx="10" />`);
+  }
+
+  // 6. Replace dark/invisible strokes (#000, #000000, black, #111, #222, #333) with bright #10b981
+  clean = clean.replace(/\bstroke=["'](#000000|#000|black|#111111|#111|#222222|#222|#333333|#333|#0a0a0a|#1a1a1a)["']/gi, 'stroke="#10b981"');
+  clean = clean.replace(/stroke:\s*(#000000|#000|black|#111111|#111|#222222|#222|#333333|#333|#0a0a0a|#1a1a1a)\b/gi, 'stroke: #10b981');
+
+  // 7. Replace dark/invisible text fills with bright high-contrast #ffffff
+  clean = clean.replace(/(<text\b[^>]*\bfill=["'])(#000000|#000|black|#111111|#111|#222222|#222|#333333|#333|#0a0a0a|#1a1a1a)(["'])/gi, '$1#ffffff$3');
+  clean = clean.replace(/(<text\b[^>]*style=["'][^"']*fill:\s*)(#000000|#000|black|#111111|#111|#222222|#222|#333333|#333)/gi, '$1#ffffff');
+
+  // 8. Replace dark fill on shapes with fill="none" (so dark fill doesn't obscure the dark canvas)
+  clean = clean.replace(/(<(path|rect|circle|polygon|polyline)\b[^>]*\bfill=["'])(#000000|#000|black|#111111|#111|#222222|#222|#1a1a1a)(["'])/gi, '$1none$4');
+
+  // 9. Add stroke="#10b981" to paths/lines/polygons that have neither stroke nor fill
+  clean = clean.replace(/<(path|line|polyline)\b((?:(?!stroke=)[^>])*)>/gi, (m, tag, rest) => {
+    if (!rest.includes('stroke=')) {
+      return `<${tag} ${rest} stroke="#10b981">`;
+    }
+    return m;
+  });
+
+  // 10. Add fill="#ffffff" to text elements if fill is not explicitly set
+  clean = clean.replace(/<text\b((?:(?!fill=)[^>])*)>/gi, (m, rest) => {
+    if (!rest.includes('fill=')) {
+      return `<text ${rest} fill="#ffffff">`;
+    }
+    return m;
+  });
+
+  return clean;
+}
+
+// -------------------------------------------------------------
 // Live Visual SVG Diagram Card (NEVER shows raw SVG code as text)
 // -------------------------------------------------------------
 function VisualSvgCard({ code, title }: { code: string; title?: string }) {
   const [downloaded, setDownloaded] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Extract clean svg string
-  let cleanSvg = code.trim();
-  const svgMatch = cleanSvg.match(/<svg[\s\S]*<\/svg>/i);
-  if (svgMatch) {
-    cleanSvg = svgMatch[0];
-  }
+  // Normalize the SVG markup (100% visible, high contrast, fallback to standard gate schematics)
+  const normalizedSvg = useMemo(() => {
+    return normalizeSvg(code, title);
+  }, [code, title]);
 
-  // Ensure high contrast and viewBox if missing
-  if (!cleanSvg.includes('viewBox') && cleanSvg.includes('width=') && cleanSvg.includes('height=')) {
-    const widthMatch = cleanSvg.match(/width="?(\d+)/i);
-    const heightMatch = cleanSvg.match(/height="?(\d+)/i);
-    if (widthMatch && heightMatch) {
-      cleanSvg = cleanSvg.replace('<svg', `<svg viewBox="0 0 ${widthMatch[1]} ${heightMatch[1]}"`);
-    }
-  }
-
-  const extractedTitle =
-    title ||
-    cleanSvg.match(/<title>([^<]+)<\/title>/i)?.[1] ||
-    cleanSvg.match(/id="([^"]+)"/i)?.[1]?.replace(/[-_]/g, ' ') ||
-    'Visual Diagram / Schematic';
+  const extractedTitle = useMemo(() => {
+    if (title) return title;
+    const gateMatch = detectLogicGate(`${code} ${title || ''}`);
+    if (gateMatch) return `${gateMatch} Gate Schematic`;
+    const titleMatch = normalizedSvg.match(/<title>([^<]+)<\/title>/i);
+    if (titleMatch) return titleMatch[1];
+    return 'Visual Diagram / Schematic';
+  }, [code, title, normalizedSvg]);
 
   const handleDownloadSvg = () => {
-    let exportSvg = cleanSvg;
-    if (!exportSvg.includes('xmlns="http://www.w3.org/2000/svg"')) {
-      exportSvg = exportSvg.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+    try {
+      const encodedData = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(normalizedSvg);
+      const a = document.createElement('a');
+      a.href = encodedData;
+      a.download = `lmls-${extractedTitle.toLowerCase().replace(/[^a-z0-9]/g, '-') || 'diagram'}-${Date.now()}.svg`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setDownloaded(true);
+      setTimeout(() => setDownloaded(false), 2000);
+    } catch (err) {
+      console.error('Download SVG error:', err);
     }
-    const blob = new Blob([exportSvg], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `lmls-diagram-${Date.now()}.svg`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    setDownloaded(true);
-    setTimeout(() => setDownloaded(false), 2000);
   };
 
   const handleDownloadPng = () => {
-    let exportSvg = cleanSvg;
-    if (!exportSvg.includes('xmlns="http://www.w3.org/2000/svg"')) {
-      exportSvg = exportSvg.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+    try {
+      const img = new Image();
+      const encodedData = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(normalizedSvg);
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const scale = 2; // 2x high-resolution scale
+        const vbMatch = normalizedSvg.match(/viewBox=["']\s*([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s*["']/i);
+        const vbWidth = vbMatch ? parseFloat(vbMatch[3]) : 600;
+        const vbHeight = vbMatch ? parseFloat(vbMatch[4]) : 260;
+        const w = (vbWidth || 600) * scale;
+        const h = (vbHeight || 260) * scale;
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.fillStyle = '#071310';
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+          const pngUrl = canvas.toDataURL('image/png');
+          const a = document.createElement('a');
+          a.href = pngUrl;
+          a.download = `lmls-${extractedTitle.toLowerCase().replace(/[^a-z0-9]/g, '-') || 'diagram'}-${Date.now()}.png`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setDownloaded(true);
+          setTimeout(() => setDownloaded(false), 2000);
+        }
+      };
+      img.onerror = (e) => {
+        console.error('PNG conversion error:', e);
+      };
+      img.src = encodedData;
+    } catch (err) {
+      console.error('Download PNG error:', err);
     }
-    const blob = new Blob([exportSvg], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const scale = 2; // High-DPI 2x scale
-      const w = img.naturalWidth || 800;
-      const h = img.naturalHeight || 400;
-      canvas.width = w * scale;
-      canvas.height = h * scale;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.fillStyle = '#0a1210';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        canvas.toBlob((pngBlob) => {
-          if (pngBlob) {
-            const pngUrl = URL.createObjectURL(pngBlob);
-            const a = document.createElement('a');
-            a.href = pngUrl;
-            a.download = `lmls-diagram-${Date.now()}.png`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(pngUrl);
-          }
-        }, 'image/png');
-      }
-      URL.revokeObjectURL(url);
-      setDownloaded(true);
-      setTimeout(() => setDownloaded(false), 2000);
-    };
-    img.src = url;
   };
 
   const handleCopySvg = () => {
-    navigator.clipboard.writeText(cleanSvg);
+    navigator.clipboard.writeText(normalizedSvg);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   return (
     <div className="my-4 rounded-2xl overflow-hidden border border-emerald-500/30 bg-[#07100e]/95 backdrop-blur-xl shadow-2xl shadow-emerald-950/40 ring-1 ring-emerald-500/20">
+      {/* Scoped CSS rules for SVG rendering & visibility */}
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            .svg-diagram-wrapper svg {
+              width: 100% !important;
+              height: auto !important;
+              aspect-ratio: 16 / 7 !important;
+              max-height: 360px !important;
+              min-height: 160px !important;
+              display: block !important;
+              overflow: visible !important;
+            }
+            .svg-diagram-wrapper svg path,
+            .svg-diagram-wrapper svg line,
+            .svg-diagram-wrapper svg circle:not([fill*="#071310"]),
+            .svg-diagram-wrapper svg rect:not([width="100%"]),
+            .svg-diagram-wrapper svg polygon,
+            .svg-diagram-wrapper svg polyline {
+              stroke-width: 2.5px;
+            }
+            .svg-diagram-wrapper svg path:not([stroke]),
+            .svg-diagram-wrapper svg line:not([stroke]),
+            .svg-diagram-wrapper svg polyline:not([stroke]) {
+              stroke: #10b981;
+            }
+            .svg-diagram-wrapper svg text {
+              fill: #ffffff !important;
+              font-family: monospace, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas !important;
+              font-size: 14px !important;
+              font-weight: 600 !important;
+            }
+          `,
+        }}
+      />
+
       {/* Glassmorphic Header */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-gradient-to-r from-emerald-950/70 via-[#0a1612]/80 to-slate-900/70 border-b border-emerald-500/20 text-xs">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400"></span>
-          <span className="font-semibold text-emerald-300 capitalize tracking-wide flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-            {extractedTitle}
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-gradient-to-r from-emerald-950/70 via-[#0a1612]/80 to-slate-900/70 border-b border-emerald-500/20 text-xs">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400 shrink-0"></span>
+          <span className="font-semibold text-emerald-300 capitalize tracking-wide flex items-center gap-1.5 truncate">
+            <Sparkles className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span className="truncate">{extractedTitle}</span>
           </span>
-          <span className="hidden sm:inline-block px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
+          <span className="hidden xs:inline-block px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 shrink-0">
             Live Vector
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* Download Diagram Button */}
           <button
             type="button"
             onClick={handleDownloadSvg}
-            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 hover:text-white border border-emerald-500/40 hover:border-emerald-400 transition-all shadow-sm cursor-pointer select-none"
+            className="min-h-[32px] sm:min-h-[36px] inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1 rounded-lg text-xs font-semibold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 hover:text-white border border-emerald-500/40 hover:border-emerald-400 transition-all shadow-sm cursor-pointer select-none"
             title="Download Diagram as Vector SVG"
           >
             {downloaded ? (
               <>
                 <Check className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="text-emerald-400">Downloaded</span>
+                <span className="text-emerald-400 text-[11px] sm:text-xs">Downloaded</span>
               </>
             ) : (
               <>
                 <Download className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Download Diagram</span>
+                <span className="text-[11px] sm:text-xs">Download SVG</span>
               </>
             )}
           </button>
@@ -982,7 +1277,7 @@ function VisualSvgCard({ code, title }: { code: string; title?: string }) {
           <button
             type="button"
             onClick={handleDownloadPng}
-            className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-white/10 hover:border-emerald-500/30 transition-all cursor-pointer select-none"
+            className="min-h-[32px] sm:min-h-[36px] inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-white/10 hover:border-emerald-500/30 transition-all cursor-pointer select-none"
             title="Export high-resolution PNG image"
           >
             <span>PNG</span>
@@ -992,7 +1287,7 @@ function VisualSvgCard({ code, title }: { code: string; title?: string }) {
           <button
             type="button"
             onClick={handleCopySvg}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-mono text-slate-400 hover:text-emerald-300 hover:bg-slate-800/60 transition-colors cursor-pointer select-none"
+            className="min-h-[32px] sm:min-h-[36px] inline-flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-lg text-[11px] font-mono text-slate-400 hover:text-emerald-300 hover:bg-slate-800/60 transition-colors cursor-pointer select-none"
             title="Copy SVG markup"
           >
             {copied ? (
@@ -1003,20 +1298,18 @@ function VisualSvgCard({ code, title }: { code: string; title?: string }) {
             ) : (
               <>
                 <Copy className="w-3 h-3 text-slate-400" />
-                <span>Copy</span>
+                <span className="hidden xs:inline">Copy</span>
               </>
             )}
           </button>
         </div>
       </div>
 
-      {/* Visual Canvas (Dark Background with Neon Green/Cyan/White Strokes) */}
-      <div className="p-4 sm:p-6 flex items-center justify-center overflow-x-auto bg-[#0a1210] min-h-[160px]">
-        <div
-          className="max-w-full flex items-center justify-center [&>svg]:max-w-full [&>svg]:h-auto [&>svg]:mx-auto [&>svg]:drop-shadow-lg"
-          dangerouslySetInnerHTML={{ __html: cleanSvg }}
-        />
-      </div>
+      {/* Visual Canvas (Directly rendering normalizedSvg in the requested responsive wrapper) */}
+      <div
+        className="w-full flex items-center justify-center p-2 sm:p-4 bg-[#071310] rounded-lg overflow-x-auto svg-diagram-wrapper"
+        dangerouslySetInnerHTML={{ __html: normalizedSvg }}
+      />
     </div>
   );
 }
@@ -1025,7 +1318,7 @@ function VisualSvgCard({ code, title }: { code: string; title?: string }) {
 function InlineCodeBlock({ language, code }: { language: string; code: string }) {
   const [copied, setCopied] = useState(false);
   const lang = (language || '').toLowerCase().trim();
-  const isSvg = lang === 'svg' || (code.trim().startsWith('<svg') && code.includes('</svg>'));
+  const isSvg = lang === 'svg' || (code.trim().startsWith('<svg') && code.includes('</svg>')) || /<svg\b/i.test(code);
   const isMermaid = lang === 'mermaid';
 
   // If SVG: directly render visual SVG card! NEVER show raw SVG code as text!
@@ -1235,8 +1528,17 @@ function FormattedMessageContent({ content }: { content: string }) {
         if (i < lines.length) i++; // skip closing ```
         const fullCode = codeLines.join('\n');
         const cleanLang = language.toLowerCase();
-        if (cleanLang === 'svg' || (fullCode.trim().startsWith('<svg') && fullCode.includes('</svg>'))) {
-          blocks.push({ type: 'svg', code: fullCode });
+        let prevTitle = '';
+        if (blocks.length > 0) {
+          const last = blocks[blocks.length - 1];
+          if (last.type === 'heading') {
+            prevTitle = last.text;
+          } else if (last.type === 'paragraph' && /^\*\*.*\*\*$/.test(last.text.trim())) {
+            prevTitle = last.text.replace(/\*\*/g, '').trim();
+          }
+        }
+        if (cleanLang === 'svg' || (fullCode.trim().startsWith('<svg') && fullCode.includes('</svg>')) || /<svg\b/i.test(fullCode)) {
+          blocks.push({ type: 'svg', code: fullCode, title: prevTitle });
         } else {
           blocks.push({ type: 'code', language, code: fullCode });
         }
@@ -1245,6 +1547,15 @@ function FormattedMessageContent({ content }: { content: string }) {
 
       // 1.5 Raw / Inline SVG Block: <svg ... </svg> (un-fenced in markdown text)
       if (trimmed.startsWith('<svg') || (trimmed.includes('<svg') && !trimmed.startsWith('```'))) {
+        let prevTitle = '';
+        if (blocks.length > 0) {
+          const last = blocks[blocks.length - 1];
+          if (last.type === 'heading') {
+            prevTitle = last.text;
+          } else if (last.type === 'paragraph' && /^\*\*.*\*\*$/.test(last.text.trim())) {
+            prevTitle = last.text.replace(/\*\*/g, '').trim();
+          }
+        }
         const svgLines: string[] = [];
         while (i < lines.length) {
           svgLines.push(lines[i]);
@@ -1254,7 +1565,7 @@ function FormattedMessageContent({ content }: { content: string }) {
           }
           i++;
         }
-        blocks.push({ type: 'svg', code: svgLines.join('\n') });
+        blocks.push({ type: 'svg', code: svgLines.join('\n'), title: prevTitle });
         continue;
       }
 
@@ -1395,9 +1706,9 @@ function FormattedMessageContent({ content }: { content: string }) {
           case 'table': {
             const isTruth = checkIsTruthTable(block.headers, block.rows);
             return (
-              <div key={idx} className="overflow-x-auto my-3 rounded-xl border border-slate-800 bg-slate-950/60 shadow-sm">
+              <div key={idx} className="my-3 rounded-xl border border-slate-800/80 bg-slate-950/80 shadow-md overflow-hidden max-w-full">
                 {isTruth && (
-                  <div className="flex items-center justify-between px-3.5 py-1.5 bg-slate-900/90 border-b border-slate-800 text-[11px] font-mono text-emerald-400">
+                  <div className="flex flex-wrap items-center justify-between gap-1.5 px-3 sm:px-3.5 py-1.5 sm:py-2 bg-slate-900/90 border-b border-slate-800 text-[11px] font-mono text-emerald-400">
                     <span className="flex items-center gap-1.5 font-semibold uppercase tracking-wider">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
                       Truth Table
@@ -1405,38 +1716,40 @@ function FormattedMessageContent({ content }: { content: string }) {
                     <span className="text-[10px] text-slate-400">Digital Logic Verification</span>
                   </div>
                 )}
-                <table className="w-full text-xs text-left border-collapse">
-                  <thead className="bg-slate-900/90 text-slate-300 border-b border-slate-800">
-                    <tr>
-                      {block.headers.map((h, hIdx) => (
-                        <th
-                          key={hIdx}
-                          className={`px-3.5 py-2.5 font-semibold text-emerald-400 ${
-                            isTruth ? 'text-center font-mono' : ''
-                          }`}
-                        >
-                          {renderInline(h)}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60 bg-slate-950/40">
-                    {block.rows.map((row, rIdx) => (
-                      <tr key={rIdx} className="hover:bg-slate-800/40 transition-colors">
-                        {row.map((cell, cIdx) => (
-                          <td
-                            key={cIdx}
-                            className={`px-3.5 py-2 text-slate-300 ${
-                              isTruth ? 'text-center' : ''
+                <div className="overflow-x-auto w-full">
+                  <table className="w-full min-w-[280px] text-xs text-left border-collapse">
+                    <thead className="bg-slate-900/90 text-slate-300 border-b border-slate-800">
+                      <tr>
+                        {block.headers.map((h, hIdx) => (
+                          <th
+                            key={hIdx}
+                            className={`px-3 sm:px-3.5 py-2 sm:py-2.5 font-semibold text-emerald-400 ${
+                              isTruth ? 'text-center font-mono' : ''
                             }`}
                           >
-                            {renderTableCell(cell, isTruth)}
-                          </td>
+                            {renderInline(h)}
+                          </th>
                         ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 bg-slate-950/40">
+                      {block.rows.map((row, rIdx) => (
+                        <tr key={rIdx} className="hover:bg-slate-800/40 transition-colors">
+                          {row.map((cell, cIdx) => (
+                            <td
+                              key={cIdx}
+                              className={`px-3 sm:px-3.5 py-1.5 sm:py-2 text-slate-300 ${
+                                isTruth ? 'text-center' : ''
+                              }`}
+                            >
+                              {renderTableCell(cell, isTruth)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             );
           }
