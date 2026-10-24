@@ -13,6 +13,7 @@ import {
   CalendarEvent,
   DriveFile,
   ShareSessionData,
+  DeadlineInfo,
 } from '@/types';
 import { mockCurrentUser, initialHistorySessions, initialMessages } from '@/data/mockData';
 import { extractUserSpecifiedDeadline } from '@/lib/externalServices';
@@ -584,6 +585,201 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return newId;
   }, []);
 
+  // Core Reusable Real-Time Streaming Chat Request Handler (Sub-Second Time-To-First-Token)
+  const streamChatRequest = useCallback(
+    async ({
+      sessionId,
+      prompt,
+      domain,
+      attachments,
+      history,
+      tempAiId,
+      onDeadlineScheduled,
+    }: {
+      sessionId: string;
+      prompt: string;
+      domain: DomainType;
+      attachments?: Attachment[];
+      history?: Array<{ role: string; content: string }>;
+      tempAiId: string;
+      onDeadlineScheduled?: (deadline: DeadlineInfo) => void;
+    }) => {
+      const liveApiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: prompt,
+          prompt,
+          domain,
+          currentPanicLevel: panicLevel,
+          attachments,
+          history,
+          model: activeModel,
+          apiKey: liveApiKey,
+          stream: true,
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        const actualErrorMessage =
+          (typeof errData.details === 'string' && errData.details) ||
+          (typeof errData.error === 'string' && errData.error) ||
+          errData.error?.message ||
+          (typeof errData.message === 'string' ? errData.message : null) ||
+          (errData.message?.content ? errData.message.content : null) ||
+          `API server error: ${res.status}`;
+        throw new Error(actualErrorMessage);
+      }
+
+      const contentType = res.headers.get('content-type') || '';
+
+      // 1. Real-Time Streaming Mode (SSE / text/event-stream)
+      if (contentType.includes('text/event-stream') && res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let accumulatedText = '';
+        let finalAiId = tempAiId;
+        let finalDeadline: DeadlineInfo | undefined;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith('data:')) continue;
+            const dataStr = trimmed.replace(/^data:\s*/, '');
+            if (!dataStr || dataStr === '[DONE]') continue;
+
+            try {
+              const payload = JSON.parse(dataStr);
+              if (payload.type === 'meta') {
+                if (payload.id) finalAiId = payload.id;
+                if (payload.deadline) finalDeadline = payload.deadline;
+                setAllMessages((prev) => {
+                  const list = prev[sessionId] || [];
+                  return {
+                    ...prev,
+                    [sessionId]: list.map((m) =>
+                      m.id === tempAiId
+                        ? {
+                            ...m,
+                            id: finalAiId,
+                            domain: payload.domain || m.domain,
+                            model: payload.model || m.model,
+                            deadline: payload.deadline || m.deadline,
+                          }
+                        : m
+                    ),
+                  };
+                });
+              } else if (payload.type === 'chunk' && payload.text) {
+                accumulatedText += payload.text;
+                setAllMessages((prev) => {
+                  const list = prev[sessionId] || [];
+                  return {
+                    ...prev,
+                    [sessionId]: list.map((m) =>
+                      m.id === finalAiId || m.id === tempAiId
+                        ? { ...m, id: finalAiId, content: accumulatedText }
+                        : m
+                    ),
+                  };
+                });
+              } else if (payload.type === 'done') {
+                if (payload.suggestedPanicLevel) {
+                  setPanicLevel(payload.suggestedPanicLevel);
+                }
+                setAllMessages((prev) => {
+                  const list = prev[sessionId] || [];
+                  return {
+                    ...prev,
+                    [sessionId]: list.map((m) =>
+                      m.id === finalAiId || m.id === tempAiId
+                        ? {
+                            ...m,
+                            id: finalAiId,
+                            content: accumulatedText,
+                            healthMeta: payload.healthMeta || m.healthMeta,
+                            wikiMeta: payload.wikiMeta || m.wikiMeta,
+                          }
+                        : m
+                    ),
+                  };
+                });
+                if (finalDeadline && onDeadlineScheduled) {
+                  onDeadlineScheduled(finalDeadline);
+                }
+              } else if (payload.type === 'error') {
+                throw new Error(payload.error || 'Streaming error');
+              }
+            } catch (e: any) {
+              if (e?.message && e.message !== 'Unexpected token') {
+                throw e;
+              }
+            }
+          }
+        }
+      } else {
+        // 2. Non-Streaming JSON Fallback
+        const data = await res.json();
+        let assistantMsg: ChatMessage | null = null;
+        if (data.message && typeof data.message === 'object') {
+          assistantMsg = data.message;
+        } else if (typeof data.message === 'string') {
+          assistantMsg = {
+            id: tempAiId,
+            role: 'assistant',
+            content: data.message,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            domain,
+          };
+        } else if (typeof data.content === 'string') {
+          assistantMsg = {
+            id: tempAiId,
+            role: 'assistant',
+            content: data.content,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            domain,
+          };
+        }
+
+        if (assistantMsg) {
+          setAllMessages((prev) => {
+            const list = prev[sessionId] || [];
+            const exists = list.some((m) => m.id === tempAiId);
+            if (exists) {
+              return {
+                ...prev,
+                [sessionId]: list.map((m) => (m.id === tempAiId ? assistantMsg! : m)),
+              };
+            }
+            return {
+              ...prev,
+              [sessionId]: [...list, assistantMsg!],
+            };
+          });
+
+          if (data.suggestedPanicLevel && data.suggestedPanicLevel !== panicLevel) {
+            setPanicLevel(data.suggestedPanicLevel);
+          }
+          if (assistantMsg.deadline && onDeadlineScheduled) {
+            onDeadlineScheduled(assistantMsg.deadline);
+          }
+        }
+      }
+    },
+    [panicLevel, activeModel]
+  );
+
   const askAboutKnowledgeTopic = useCallback((topicTitle: string, initialPrompt?: string) => {
     setIsKnowledgeModalOpen(false);
     const lower = topicTitle.toLowerCase();
@@ -617,96 +813,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
+    const tempAiId = `ai-${Date.now()}`;
+    const tempAiMsg: ChatMessage = {
+      id: tempAiId,
+      role: 'assistant',
+      content: '',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      domain,
+    };
+
     setHistorySessions((prev) => [newSession, ...prev]);
     setAllMessages((prev) => ({
       ...prev,
-      [newSessionId]: [userMsg],
+      [newSessionId]: [userMsg, tempAiMsg],
     }));
     setActiveSessionId(newSessionId);
 
-    const liveApiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-
     setIsGenerating(true);
-    fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: promptToSend,
-        prompt: promptToSend,
-        domain,
-        currentPanicLevel: panicLevel,
-        model: activeModel,
-        apiKey: liveApiKey,
-      }),
+    streamChatRequest({
+      sessionId: newSessionId,
+      prompt: promptToSend,
+      domain,
+      tempAiId,
     })
-      .then(async (res) => {
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          const actualErrorMessage =
-            (typeof errData.details === 'string' && errData.details) ||
-            (typeof errData.error === 'string' && errData.error) ||
-            errData.error?.message ||
-            (typeof errData.message === 'string' ? errData.message : null) ||
-            (errData.message?.content ? errData.message.content : null) ||
-            `Server responded with ${res.status}`;
-          throw new Error(actualErrorMessage);
-        }
-        return res.json();
-      })
-      .then((data) => {
-        let assistantMsg: ChatMessage | null = null;
-        if (data.message && typeof data.message === 'object') {
-          assistantMsg = data.message;
-        } else if (typeof data.message === 'string') {
-          assistantMsg = {
-            id: `ai-${Date.now()}`,
-            role: 'assistant',
-            content: data.message,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            domain,
-          };
-        } else if (typeof data.content === 'string') {
-          assistantMsg = {
-            id: `ai-${Date.now()}`,
-            role: 'assistant',
-            content: data.content,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            domain,
-          };
-        }
-
-        if (assistantMsg) {
-          setAllMessages((prev) => ({
-            ...prev,
-            [newSessionId]: [...(prev[newSessionId] || []), assistantMsg!],
-          }));
-          if (data.suggestedPanicLevel) {
-            setPanicLevel(data.suggestedPanicLevel);
-          }
-        }
-      })
       .catch((err: any) => {
         console.error('API error in topic investigation:', err);
         const actualErrorMessage = err?.message || 'Error communicating with /api/chat service.';
         const cleanContent = actualErrorMessage.startsWith('⚠️')
           ? actualErrorMessage
           : `⚠️ **Gemini API Error:** ${actualErrorMessage}`;
-        const errorMsg: ChatMessage = {
-          id: `err-${Date.now()}`,
-          role: 'assistant',
-          content: cleanContent,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          domain,
-        };
-        setAllMessages((prev) => ({
-          ...prev,
-          [newSessionId]: [...(prev[newSessionId] || []), errorMsg],
-        }));
+        setAllMessages((prev) => {
+          const list = prev[newSessionId] || [];
+          return {
+            ...prev,
+            [newSessionId]: list.map((m) =>
+              m.id === tempAiId ? { ...m, content: cleanContent } : m
+            ),
+          };
+        });
       })
       .finally(() => {
         setIsGenerating(false);
       });
-  }, [panicLevel, activeModel]);
+  }, [streamChatRequest]);
 
   // Workspace Message Streaming & AI Simulation
   const currentMessages = allMessages[activeSessionId] || [];
@@ -798,9 +947,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       domain = 'academic';
     }
 
+    const tempAiId = `ai-${Date.now()}`;
+    const tempAiMsg: ChatMessage = {
+      id: tempAiId,
+      role: 'assistant',
+      content: '',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      domain,
+    };
+
     setAllMessages((prev) => ({
       ...prev,
-      [activeSessionId]: [...(prev[activeSessionId] || []), userMsg],
+      [activeSessionId]: [...(prev[activeSessionId] || []), userMsg, tempAiMsg],
     }));
 
     // Update session title if existing, or prepend a new session if first message
@@ -839,118 +997,56 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .slice(-10)
       .map((m) => ({ role: m.role, content: m.content }));
 
-    const liveApiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-
-    // AI Generation via Secure Server API Route (/api/chat)
     setIsGenerating(true);
 
-    fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: content,
-        prompt: content,
-        domain,
-        currentPanicLevel: panicLevel,
-        attachments,
-        history: sessionHistory,
-        model: activeModel,
-        apiKey: liveApiKey,
-      }),
+    streamChatRequest({
+      sessionId: activeSessionId,
+      prompt: content,
+      domain,
+      attachments,
+      history: sessionHistory,
+      tempAiId,
+      onDeadlineScheduled: (dl) => {
+        const daysOffset = dl.daysRemaining || 0;
+        const targetDateObj = new Date(Date.now() + daysOffset * 24 * 60 * 60 * 1000);
+        const dateFormatted = targetDateObj.toISOString().split('T')[0];
+
+        addCalendarEvent({
+          title: dl.subject || `Scheduled: ${dl.rawText}`,
+          date: dateFormatted,
+          time: '09:00 AM',
+          reminderDate: dateFormatted,
+          reminderTime: '09:00 AM',
+          priority: dl.priority || 'high',
+          category: 'exam',
+          notes: `Auto-scheduled from chat: "${dl.rawText}". Urgency: ${dl.priority.toUpperCase()}`,
+          completed: false,
+          googleTasksSynced: true,
+          googleCalendarSynced: true,
+          alarmScheduled: true,
+        });
+      },
     })
-      .then(async (res) => {
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          const actualErrorMessage =
-            (typeof errData.details === 'string' && errData.details) ||
-            (typeof errData.error === 'string' && errData.error) ||
-            errData.error?.message ||
-            (typeof errData.message === 'string' ? errData.message : null) ||
-            (errData.message?.content ? errData.message.content : null) ||
-            `API server error: ${res.status}`;
-          throw new Error(actualErrorMessage);
-        }
-        return res.json();
-      })
-      .then((data) => {
-        let assistantMsg: ChatMessage | null = null;
-        if (data.message && typeof data.message === 'object') {
-          assistantMsg = data.message;
-        } else if (typeof data.message === 'string') {
-          assistantMsg = {
-            id: `ai-${Date.now()}`,
-            role: 'assistant',
-            content: data.message,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            domain,
-          };
-        } else if (typeof data.content === 'string') {
-          assistantMsg = {
-            id: `ai-${Date.now()}`,
-            role: 'assistant',
-            content: data.content,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            domain,
-          };
-        }
-
-        if (assistantMsg) {
-          setAllMessages((prev) => ({
-            ...prev,
-            [activeSessionId]: [...(prev[activeSessionId] || []), assistantMsg!],
-          }));
-
-          // Auto-schedule task & device alarm if deadline detected in prompt/chat response
-          if (assistantMsg.deadline) {
-            const dl = assistantMsg.deadline;
-            const daysOffset = dl.daysRemaining || 0;
-            const targetDateObj = new Date(Date.now() + daysOffset * 24 * 60 * 60 * 1000);
-            const dateFormatted = targetDateObj.toISOString().split('T')[0];
-
-            addCalendarEvent({
-              title: dl.subject || `Scheduled: ${dl.rawText}`,
-              date: dateFormatted,
-              time: '09:00 AM',
-              reminderDate: dateFormatted,
-              reminderTime: '09:00 AM',
-              priority: dl.priority || 'high',
-              category: 'exam',
-              notes: `Auto-scheduled from chat: "${dl.rawText}". Urgency: ${dl.priority.toUpperCase()}`,
-              completed: false,
-              googleTasksSynced: true,
-              googleCalendarSynced: true,
-              alarmScheduled: true,
-            });
-          }
-
-          // JEV Decision Engine Dynamic Panic Level sync
-          if (data.suggestedPanicLevel && data.suggestedPanicLevel !== panicLevel) {
-            setPanicLevel(data.suggestedPanicLevel);
-          }
-        }
-      })
       .catch((err: any) => {
         console.error('Error connecting to /api/chat:', err);
         const actualErrorMessage = err?.message || 'Error communicating with /api/chat service.';
         const cleanContent = actualErrorMessage.startsWith('⚠️')
           ? actualErrorMessage
           : `⚠️ **Gemini API Error:** ${actualErrorMessage}`;
-        const errorMsg: ChatMessage = {
-          id: `err-${Date.now()}`,
-          role: 'assistant',
-          content: cleanContent,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          domain,
-        };
-        setAllMessages((prev) => ({
-          ...prev,
-          [activeSessionId]: [...(prev[activeSessionId] || []), errorMsg],
-        }));
+        setAllMessages((prev) => {
+          const list = prev[activeSessionId] || [];
+          return {
+            ...prev,
+            [activeSessionId]: list.map((m) =>
+              m.id === tempAiId ? { ...m, content: cleanContent } : m
+            ),
+          };
+        });
       })
       .finally(() => {
         setIsGenerating(false);
       });
-  }, [activeSessionId, panicLevel, allMessages, activeModel, addCalendarEvent]);
+  }, [activeSessionId, allMessages, streamChatRequest, addCalendarEvent]);
 
   // Edit an existing user prompt, truncate downstream conversation, and resubmit to Gemini API
   const editAndResubmitMessage = useCallback(
@@ -969,9 +1065,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
 
-      // Truncate messages up to the edited user message (removes the old AI reply and subsequent turns)
+      const tempAiId = `ai-${Date.now()}`;
+      const tempAiMsg: ChatMessage = {
+        id: tempAiId,
+        role: 'assistant',
+        content: '',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        domain: updatedUserMsg.domain || 'productivity',
+      };
+
+      // Truncate messages up to the edited user message and append the new AI placeholder
       const priorHistory = messages.slice(0, index);
-      const updatedList = [...priorHistory, updatedUserMsg];
+      const updatedList = [...priorHistory, updatedUserMsg, tempAiMsg];
 
       setAllMessages((prev) => ({
         ...prev,
@@ -991,108 +1096,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .slice(-10)
         .map((m) => ({ role: m.role, content: m.content }));
 
-      const liveApiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-
       setIsGenerating(true);
 
-      fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: trimmed,
-          prompt: trimmed,
-          domain: updatedUserMsg.domain || 'productivity',
-          currentPanicLevel: panicLevel,
-          attachments: updatedUserMsg.attachments || [],
-          history: sessionHistory,
-          model: activeModel,
-          apiKey: liveApiKey,
-        }),
+      streamChatRequest({
+        sessionId: activeSessionId,
+        prompt: trimmed,
+        domain: updatedUserMsg.domain || 'productivity',
+        attachments: updatedUserMsg.attachments || [],
+        history: sessionHistory,
+        tempAiId,
+        onDeadlineScheduled: (dl) => {
+          const daysOffset = dl.daysRemaining || 0;
+          const targetDateObj = new Date(Date.now() + daysOffset * 24 * 60 * 60 * 1000);
+          const dateFormatted = targetDateObj.toISOString().split('T')[0];
+
+          addCalendarEvent({
+            title: dl.subject || `Scheduled: ${dl.rawText}`,
+            date: dateFormatted,
+            category: 'deadline',
+            priority: dl.priority || 'high',
+            linkedSessionId: activeSessionId,
+            notes: `Auto-extracted deadline: ${dl.rawText}`,
+            alarmScheduled: true,
+          });
+        },
       })
-        .then(async (res) => {
-          if (!res.ok) {
-            const errData = await res.json().catch(() => ({}));
-            const actualErrorMessage =
-              (typeof errData.details === 'string' && errData.details) ||
-              (typeof errData.error === 'string' && errData.error) ||
-              errData.error?.message ||
-              (typeof errData.message === 'string' ? errData.message : null) ||
-              (errData.message?.content ? errData.message.content : null) ||
-              `API server error: ${res.status}`;
-            throw new Error(actualErrorMessage);
-          }
-          return res.json();
-        })
-        .then((data) => {
-          let assistantMsg: ChatMessage | null = null;
-          if (data.message && typeof data.message === 'object') {
-            assistantMsg = data.message;
-          } else if (typeof data.message === 'string') {
-            assistantMsg = {
-              id: `ai-${Date.now()}`,
-              role: 'assistant',
-              content: data.message,
-              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              domain: updatedUserMsg.domain || 'productivity',
-            };
-          } else if (typeof data.content === 'string') {
-            assistantMsg = {
-              id: `ai-${Date.now()}`,
-              role: 'assistant',
-              content: data.content,
-              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              domain: updatedUserMsg.domain || 'productivity',
-            };
-          }
-
-          if (assistantMsg) {
-            setAllMessages((prev) => {
-              const current = prev[activeSessionId] || [];
-              const base = current.slice(0, index + 1);
-              return {
-                ...prev,
-                [activeSessionId]: [...base, assistantMsg!],
-              };
-            });
-
-            // Auto-schedule task & device alarm if deadline detected in prompt/chat response
-            if (assistantMsg.deadline) {
-              const dl = assistantMsg.deadline;
-              const daysOffset = dl.daysRemaining || 0;
-              const targetDateObj = new Date(Date.now() + daysOffset * 24 * 60 * 60 * 1000);
-              const dateFormatted = targetDateObj.toISOString().split('T')[0];
-
-              addCalendarEvent({
-                title: dl.subject || `Scheduled: ${dl.rawText}`,
-                date: dateFormatted,
-                category: 'deadline',
-                priority: dl.priority || 'high',
-                linkedSessionId: activeSessionId,
-                notes: `Auto-extracted deadline: ${dl.rawText}`,
-                alarmScheduled: true,
-              });
-            }
-          }
-        })
         .catch((err: any) => {
           console.error('Error connecting to /api/chat:', err);
           const actualErrorMessage = err?.message || 'Error communicating with /api/chat service.';
           const cleanContent = actualErrorMessage.startsWith('⚠️')
             ? actualErrorMessage
             : `⚠️ **Gemini API Error:** ${actualErrorMessage}`;
-          const errorMsg: ChatMessage = {
-            id: `err-${Date.now()}`,
-            role: 'assistant',
-            content: cleanContent,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            domain: updatedUserMsg.domain || 'productivity',
-          };
           setAllMessages((prev) => {
-            const current = prev[activeSessionId] || [];
-            const base = current.slice(0, index + 1);
+            const list = prev[activeSessionId] || [];
             return {
               ...prev,
-              [activeSessionId]: [...base, errorMsg],
+              [activeSessionId]: list.map((m) =>
+                m.id === tempAiId ? { ...m, content: cleanContent } : m
+              ),
             };
           });
         })
@@ -1100,7 +1141,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setIsGenerating(false);
         });
     },
-    [activeSessionId, panicLevel, allMessages, activeModel, addCalendarEvent]
+    [activeSessionId, allMessages, streamChatRequest, addCalendarEvent]
   );
 
   return (

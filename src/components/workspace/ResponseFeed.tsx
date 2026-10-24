@@ -319,11 +319,12 @@ export default function ResponseFeed() {
       )}
 
       {/* 2. Chat Feed Messages */}
-      {currentMessages.map((msg) => (
+      {currentMessages.map((msg, idx) => (
         <MessageCard
           key={msg.id}
           message={msg}
           panicLevel={panicLevel}
+          isLast={idx === currentMessages.length - 1}
           onUpdateDeadline={(newDate) => updateDeadlineDate(msg.id, newDate)}
           onExportPdf={() => handleExportPdf(msg)}
           onSaveToDrive={() => handleSaveToDrive(msg)}
@@ -338,8 +339,13 @@ export default function ResponseFeed() {
         />
       ))}
 
-      {/* Loading Skeleton when generating */}
-      {isGenerating && <LoadingSkeleton panicLevel={panicLevel} />}
+      {/* Loading Skeleton when generating and first token has not yet arrived */}
+      {isGenerating &&
+        (currentMessages.length === 0 ||
+          currentMessages[currentMessages.length - 1].role !== 'assistant' ||
+          !currentMessages[currentMessages.length - 1].content) && (
+          <LoadingSkeleton panicLevel={panicLevel} />
+        )}
 
       {/* Floating Save-to-Drive Confirmation Toast */}
       {toast && (
@@ -387,6 +393,7 @@ export default function ResponseFeed() {
 function MessageCard({
   message,
   panicLevel,
+  isLast,
   onUpdateDeadline,
   onExportPdf,
   onSaveToDrive,
@@ -401,6 +408,7 @@ function MessageCard({
 }: {
   message: ChatMessage;
   panicLevel: string;
+  isLast?: boolean;
   onUpdateDeadline: (newDate: string) => void;
   onExportPdf: () => void;
   onSaveToDrive: () => void;
@@ -582,7 +590,12 @@ function MessageCard({
         )}
 
         {/* Formatted Text Content */}
-        <FormattedMessageContent content={message.content} />
+        <div className="relative">
+          <FormattedMessageContent content={message.content} />
+          {isGenerating && isLast && (
+            <span className="inline-block w-2 h-4 ml-1.5 bg-emerald-400 animate-pulse rounded-sm align-middle shadow-sm shadow-emerald-400" />
+          )}
+        </div>
 
         {/* 2. ACADEMIC VIEW: Code Snippets (if not already included inline in content) */}
         {message.codeSnippets && message.codeSnippets.length > 0 && (
@@ -854,15 +867,22 @@ function MermaidRenderer({ code }: { code: string }) {
 // -------------------------------------------------------------
 function detectLogicGate(text: string): string | null {
   const t = text || '';
-  // Specific unambiguous gate names
-  const specificMatch = t.match(/\b(XNOR|NAND|XOR|NOR)\b/i);
-  if (specificMatch) return specificMatch[1].toUpperCase();
+  // 1. Composite logic gates (unambiguous: XNOR, NAND, XOR, NOR)
+  const compositeMatch = t.match(/\b(XNOR|NAND|XOR|NOR)\b/i);
+  if (compositeMatch) return compositeMatch[1].toUpperCase();
 
-  // For AND, OR, NOT: check for gate keyword or uppercase in circuit context
-  const gatePhraseMatch = t.match(/\b(AND|OR|NOT)\s*(?:gate|logic|circuit|schematic|symbol|diagram)?\b/i);
+  // 2. Title tag or HTML/SVG comments like <title>AND Gate</title> or <!-- AND Gate Schematic -->
+  const titleTagMatch = t.match(/<title>[^<]*?\b(AND|OR|NOT)\b[^<]*?<\/title>/i);
+  if (titleTagMatch) return titleTagMatch[1].toUpperCase();
+
+  const commentMatch = t.match(/<!--[^>]*?\b(AND|OR|NOT)\b[^>]*?-->/i);
+  if (commentMatch) return commentMatch[1].toUpperCase();
+
+  // 3. AND, OR, NOT with gate, schematic, circuit, or diagram keywords
+  const gatePhraseMatch = t.match(/\b(AND|OR|NOT)\b[\s_-]*(?:gate|schematic|circuit|symbol|diagram|logic)?/i);
   if (gatePhraseMatch) {
     const word = gatePhraseMatch[1].toUpperCase();
-    if (/gate|circuit|logic|schematic|symbol/i.test(t) || new RegExp(`\\b${word}\\b`).test(t)) {
+    if (/gate|circuit|logic|schematic|symbol|<svg/i.test(t) || t.includes('<title>')) {
       return word;
     }
   }
@@ -1100,10 +1120,28 @@ function normalizeSvg(raw: string, titleHint = ''): string {
   // 8. Replace dark fill on shapes with fill="none" (so dark fill doesn't obscure the dark canvas)
   clean = clean.replace(/(<(path|rect|circle|polygon|polyline)\b[^>]*\bfill=["'])(#000000|#000|black|#111111|#111|#222222|#222|#1a1a1a)(["'])/gi, '$1none$4');
 
-  // 9. Add stroke="#10b981" to paths/lines/polygons that have neither stroke nor fill
-  clean = clean.replace(/<(path|line|polyline)\b((?:(?!stroke=)[^>])*)>/gi, (m, tag, rest) => {
+  // 8b. Replace solid white, light gray, or opaque bright fills on shapes
+  // NEVER allow a shape to have #ffffff / white fill behind white text!
+  // Replace with dark glass fill="#0b221c" and crisp colored border
+  clean = clean.replace(
+    /(<(rect|path|circle|polygon|polyline)\b[^>]*\bfill=["'])(#ffffff|#fff|white|#f8fafc|#f1f5f9|#e2e8f0|#cbd5e1|#f0f0f0|#eee|#eeeeee|#e0e0e0|#ddd|#dddddd|#ccc|#cccccc|rgb\(255,\s*255,\s*255\))(["'])/gi,
+    '$1#0b221c$4'
+  );
+  clean = clean.replace(
+    /(<(rect|path|circle|polygon|polyline)\b[^>]*\bstyle=["'][^"']*fill:\s*)(#ffffff|#fff|white|#f8fafc|#f1f5f9|#e2e8f0|#cbd5e1|#f0f0f0|#eee|#eeeeee|#e0e0e0|#ddd|#dddddd|#ccc|#cccccc|rgb\(255,\s*255,\s*255\))/gi,
+    '$1#0b221c'
+  );
+
+  // If a non-canvas <rect> has no stroke or has fill="#0b221c", ensure it has a colored border and rounded corners
+  clean = clean.replace(/<rect\b((?:(?!stroke=)[^>])*)>/gi, (m, rest) => {
+    if (rest.includes('width="100%"') || rest.includes("width='100%'")) return m;
+    return `<rect ${rest} stroke="#10b981" stroke-width="2" rx="8">`;
+  });
+
+  // 9. Add stroke="#10b981" stroke-width="2" to paths/lines/polygons/circles that have no stroke
+  clean = clean.replace(/<(path|line|polyline|circle|polygon)\b((?:(?!stroke=)[^>])*)>/gi, (m, tag, rest) => {
     if (!rest.includes('stroke=')) {
-      return `<${tag} ${rest} stroke="#10b981">`;
+      return `<${tag} ${rest} stroke="#10b981" stroke-width="2">`;
     }
     return m;
   });
@@ -1125,6 +1163,7 @@ function normalizeSvg(raw: string, titleHint = ''): string {
 function VisualSvgCard({ code, title }: { code: string; title?: string }) {
   const [downloaded, setDownloaded] = useState(false);
   const [copied, setCopied] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Normalize the SVG markup (100% visible, high contrast, fallback to standard gate schematics)
   const normalizedSvg = useMemo(() => {
@@ -1140,9 +1179,107 @@ function VisualSvgCard({ code, title }: { code: string; title?: string }) {
     return 'Visual Diagram / Schematic';
   }, [code, title, normalizedSvg]);
 
+  // Auto-fit box widths and auto-adjust viewBox using real DOM bounding boxes
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const svgEl = containerRef.current.querySelector('svg');
+    if (!svgEl) return;
+
+    try {
+      const textEls = Array.from(svgEl.querySelectorAll('text'));
+      const rectEls = Array.from(svgEl.querySelectorAll('rect'));
+
+      // a) Measure real pixel width using getBBox() and resize background rects
+      textEls.forEach((textEl) => {
+        const textContent = textEl.textContent?.trim();
+        if (!textContent) return;
+
+        let textBBox: DOMRect;
+        try {
+          textBBox = textEl.getBBox();
+        } catch {
+          return;
+        }
+
+        if (!textBBox || textBBox.width <= 0) return;
+
+        const textCenterX = textBBox.x + textBBox.width / 2;
+        const textCenterY = textBBox.y + textBBox.height / 2;
+
+        // Find candidate background rect enclosing or behind this text (pick smallest enclosing box)
+        const candidateRects = rectEls
+          .map((rect) => {
+            const wAttr = rect.getAttribute('width');
+            if (wAttr === '100%') return null;
+
+            let rBBox: DOMRect;
+            try {
+              rBBox = rect.getBBox();
+            } catch {
+              return null;
+            }
+
+            // Exclude root canvas background rect
+            if (rBBox.width >= 580 && rBBox.height >= 240) return null;
+
+            // Check if rect contains the text center or is close to text center
+            const contains =
+              textCenterX >= rBBox.x - 12 &&
+              textCenterX <= rBBox.x + rBBox.width + 12 &&
+              textCenterY >= rBBox.y - 12 &&
+              textCenterY <= rBBox.y + rBBox.height + 12;
+
+            if (!contains) return null;
+
+            const area = rBBox.width * rBBox.height;
+            return { rect, rBBox, area };
+          })
+          .filter(Boolean) as Array<{ rect: SVGRectElement; rBBox: DOMRect; area: number }>;
+
+        candidateRects.sort((a, b) => a.area - b.area);
+        const candidateRect = candidateRects[0]?.rect;
+
+        if (candidateRect) {
+          const curW = parseFloat(candidateRect.getAttribute('width') || '0') || candidateRect.getBBox().width;
+          const curH = parseFloat(candidateRect.getAttribute('height') || '0') || candidateRect.getBBox().height;
+
+          const neededW = Math.max(curW, textBBox.width + 32);
+          const neededH = Math.max(curH, textBBox.height + 16);
+
+          const newX = textCenterX - neededW / 2;
+          const newY = textCenterY - neededH / 2;
+
+          candidateRect.setAttribute('width', String(Math.round(neededW)));
+          candidateRect.setAttribute('height', String(Math.round(neededH)));
+          candidateRect.setAttribute('x', String(Math.round(newX)));
+          candidateRect.setAttribute('y', String(Math.round(newY)));
+          if (!candidateRect.getAttribute('rx')) {
+            candidateRect.setAttribute('rx', '8');
+          }
+        }
+      });
+
+      // b) After adjusting boxes, call svgEl.getBBox() on root <svg> and set viewBox with clean breathing room
+      const rootBBox = svgEl.getBBox();
+      if (rootBBox && rootBBox.width > 0 && rootBBox.height > 0) {
+        const padX = 24;
+        const padY = 24;
+        const minX = Math.round(rootBBox.x - padX);
+        const minY = Math.round(rootBBox.y - padY);
+        const totalW = Math.round(rootBBox.width + padX * 2);
+        const totalH = Math.round(rootBBox.height + padY * 2);
+
+        svgEl.setAttribute('viewBox', `${minX} ${minY} ${totalW} ${totalH}`);
+      }
+    } catch {
+      // getBBox safely handled if called before layout
+    }
+  }, [normalizedSvg]);
+
   const handleDownloadSvg = () => {
     try {
-      const encodedData = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(normalizedSvg);
+      const liveSvg = containerRef.current?.querySelector('svg')?.outerHTML || normalizedSvg;
+      const encodedData = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(liveSvg);
       const a = document.createElement('a');
       a.href = encodedData;
       a.download = `lmls-${extractedTitle.toLowerCase().replace(/[^a-z0-9]/g, '-') || 'diagram'}-${Date.now()}.svg`;
@@ -1158,12 +1295,13 @@ function VisualSvgCard({ code, title }: { code: string; title?: string }) {
 
   const handleDownloadPng = () => {
     try {
+      const liveSvg = containerRef.current?.querySelector('svg')?.outerHTML || normalizedSvg;
       const img = new Image();
-      const encodedData = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(normalizedSvg);
+      const encodedData = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(liveSvg);
       img.onload = () => {
         const canvas = document.createElement('canvas');
         const scale = 2; // 2x high-resolution scale
-        const vbMatch = normalizedSvg.match(/viewBox=["']\s*([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s*["']/i);
+        const vbMatch = liveSvg.match(/viewBox=["']\s*([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s+([\d.-]+)\s*["']/i);
         const vbWidth = vbMatch ? parseFloat(vbMatch[3]) : 600;
         const vbHeight = vbMatch ? parseFloat(vbMatch[4]) : 260;
         const w = (vbWidth || 600) * scale;
@@ -1196,14 +1334,15 @@ function VisualSvgCard({ code, title }: { code: string; title?: string }) {
   };
 
   const handleCopySvg = () => {
-    navigator.clipboard.writeText(normalizedSvg);
+    const liveSvg = containerRef.current?.querySelector('svg')?.outerHTML || normalizedSvg;
+    navigator.clipboard.writeText(liveSvg);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   return (
     <div className="my-4 rounded-2xl overflow-hidden border border-emerald-500/30 bg-[#07100e]/95 backdrop-blur-xl shadow-2xl shadow-emerald-950/40 ring-1 ring-emerald-500/20">
-      {/* Scoped CSS rules for SVG rendering & visibility */}
+      {/* Scoped CSS rules for SVG rendering, dark halo on text & visibility */}
       <style
         dangerouslySetInnerHTML={{
           __html: `
@@ -1211,7 +1350,7 @@ function VisualSvgCard({ code, title }: { code: string; title?: string }) {
               width: 100% !important;
               height: auto !important;
               aspect-ratio: 16 / 7 !important;
-              max-height: 360px !important;
+              max-height: 380px !important;
               min-height: 160px !important;
               display: block !important;
               overflow: visible !important;
@@ -1222,7 +1361,7 @@ function VisualSvgCard({ code, title }: { code: string; title?: string }) {
             .svg-diagram-wrapper svg rect:not([width="100%"]),
             .svg-diagram-wrapper svg polygon,
             .svg-diagram-wrapper svg polyline {
-              stroke-width: 2.5px;
+              stroke-width: 2px;
             }
             .svg-diagram-wrapper svg path:not([stroke]),
             .svg-diagram-wrapper svg line:not([stroke]),
@@ -1230,10 +1369,17 @@ function VisualSvgCard({ code, title }: { code: string; title?: string }) {
               stroke: #10b981;
             }
             .svg-diagram-wrapper svg text {
+              paint-order: stroke fill !important;
+              stroke: #071310 !important;
+              stroke-width: 4px !important;
+              stroke-linejoin: round !important;
               fill: #ffffff !important;
-              font-family: monospace, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas !important;
-              font-size: 14px !important;
+              font-family: monospace, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, sans-serif !important;
+              font-size: 13px !important;
               font-weight: 600 !important;
+            }
+            .svg-diagram-wrapper svg rect:not([width="100%"]) {
+              rx: 8px !important;
             }
           `,
         }}
@@ -1305,8 +1451,9 @@ function VisualSvgCard({ code, title }: { code: string; title?: string }) {
         </div>
       </div>
 
-      {/* Visual Canvas (Directly rendering normalizedSvg in the requested responsive wrapper) */}
+      {/* Visual Canvas (Directly rendering normalizedSvg with containerRef for DOM Bounding Box Auto-Fitting) */}
       <div
+        ref={containerRef}
         className="w-full flex items-center justify-center p-2 sm:p-4 bg-[#071310] rounded-lg overflow-x-auto svg-diagram-wrapper"
         dangerouslySetInnerHTML={{ __html: normalizedSvg }}
       />

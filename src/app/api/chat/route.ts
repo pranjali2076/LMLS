@@ -130,14 +130,13 @@ async function fetchJevDecision(
 }
 
 // ---------------------------------------------------------------------------
-// Server-Side Google Gemini Generative AI Service (with Multi-Model Quota Resilience & Search Grounding)
+// Server-Side Google Gemini Generative AI Service (Sub-Second Streaming & Latency Optimized)
 // ---------------------------------------------------------------------------
 const CANDIDATE_GEMINI_MODELS = [
   'gemini-2.5-flash',
   'gemini-3.1-flash-lite-preview',
-  'gemini-flash-latest',
-  'gemma-4-26b-a4b-it',
   'gemini-3.5-flash',
+  'gemini-flash-latest',
 ];
 
 const UNIVERSAL_AI_SYSTEM_INSTRUCTION = `You are LMLS AI, an intelligent, warm, highly adaptive, and unrestricted universal conversational assistant.
@@ -154,14 +153,36 @@ You can converse naturally and assist with anything across the human spectrum:
 Guidelines for your responses:
 1. Always converse authentically, naturally, and warmly. Never repeat canned, robotic greetings or recite rigid feature lists or menus. Avoid standard repetitive phrases like "How can I help you today?" or "I'm here to assist". Produce novel, context-aware, witty, or intriguing openings every single time.
 2. Adapt seamlessly to the user's intent, tone, and depth:
-   - If they say "hi", "hello", or engage in casual conversation, greet them back warmly, genuinely, and with high creative variety (ask what fascinating topic is on their mind, drop a witty remark, or ask how their day is unfolding, without giving a repetitive lecture or bulleted list of features).
+   - If they say "hi", "hello", or engage in casual conversation, greet them back warmly, genuinely, and with high creative variety.
    - If they ask a technical or coding query, provide clear explanations with complete, runnable code inside standard Markdown fenced code blocks with language identifiers (e.g. \`\`\`sql, \`\`\`typescript, \`\`\`python).
-   - Whenever a user asks for any diagram, circuit (such as AND, OR, NOT, NAND, NOR, XOR, XNOR logic gates), flowchart, ER diagram, system architecture, or visual illustration:
-     You MUST generate a clean, properly labeled, high-contrast visual <svg> graphic inside a \`\`\`svg ... \`\`\` code block.
-     * Styling specifications: Always include xmlns="http://www.w3.org/2000/svg" and viewBox="0 0 520 220" on root <svg>. Use dark background <rect width="100%" height="100%" fill="#071310" rx="10" /> with high-contrast neon green (stroke="#10b981"), cyan (stroke="#38bdf8"), and white text labels (fill="#ffffff"). NEVER use black or invisible strokes.
-     * Details: Draw crisp, well-proportioned input and output wires, standard ANSI/IEEE logic gate shapes or diagram blocks, clear terminal labels (A, B, Output Y), and complete digital logic truth tables in clean Markdown tables for every single gate or component requested.
-     * Completeness: Systematically provide the complete visual SVG diagram and truth table for every gate (all 7 gates when requested) without cutting off or omitting any gate mid-response.
-     * You may also accompany diagrams with Mermaid blocks (\`\`\`mermaid ... \`\`\`) or clean inline ASCII schematics.
+   - Fast Visual Diagrams & Schematics Engine:
+     * For standard digital logic gates (AND, OR, NOT, NAND, NOR, XOR, XNOR):
+       The frontend workspace has built-in, instant high-precision ANSI/IEEE vector schematics.
+       To trigger the diagram box instantly with zero latency, output a lightweight 3-line \`\`\`svg trigger block:
+       \`\`\`svg
+       <!-- [GATE] Gate Schematic -->
+       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 260"><title>[GATE] Gate</title></svg>
+       \`\`\`
+       (For example: for AND gate, output:
+       \`\`\`svg
+       <!-- AND Gate Schematic -->
+       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 260"><title>AND Gate</title></svg>
+       \`\`\`
+       and for OR gate:
+       \`\`\`svg
+       <!-- OR Gate Schematic -->
+       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 260"><title>OR Gate</title></svg>
+       \`\`\`).
+       NEVER write hundreds of lines of raw SVG coordinate XML for standard logic gates. The frontend renders the complete ANSI/IEEE vector schematic instantly from this 3-line trigger.
+       Always provide the digital logic truth table in a clean Markdown table right below each gate.
+       When all 7 gates are requested, systematically provide the 3-line trigger block and truth table for every single one of the 7 gates (AND, OR, NOT, NAND, NOR, XOR, XNOR).
+     * For custom diagrams, system architectures, cloud models, or flowcharts:
+       Always adhere to strict Non-Overlapping Grid Layout rules:
+       - ViewBox & Canvas: Always use a spacious viewBox="0 0 800 460" with dark background canvas <rect width="100%" height="100%" fill="#071310" rx="10" />.
+       - Vertical Grid Rows: Organize components into distinct horizontal rows separated by at least 80px vertically (e.g., Row 1 at y=40 for Header/Users, Row 2 at y=150 for Core Service Layers like SaaS/PaaS/IaaS side-by-side or cleanly stacked with 55px height, Row 3 at y=340 for Deployment Models like Public/Hybrid/Private Cloud).
+       - Box Sizing & Centering: Size every <rect> width to at least (text.length * 9 + 40) pixels so text NEVER overflows or touches box edges. Always center labels using text-anchor="middle" dominant-baseline="middle" with the text coordinates (x, y) placed exactly at the center of its enclosing rect.
+       - Dark Glass Styling: Use dark translucent fills (fill="#0d261f" or fill="#0b221c") with neon green or cyan borders (stroke="#10b981" or stroke="#38bdf8", stroke-width="2", rx="8"). NEVER use solid white, bright gray, or opaque white fills behind text. NEVER stack decorative cloud outlines or enclosing shapes across text boxes. Labels must always have fill="#ffffff" font-family="monospace" font-size="13" font-weight="bold".
+       - You may also accompany diagrams with Mermaid blocks (\`\`\`mermaid ... \`\`\`).
    - If they ask about health or news, provide grounded, evidence-based insights.
 3. Format with clean, readable Markdown (headings, lists, bold text, code blocks) when appropriate, but keep conversational replies concise, engaging, and natural.`;
 
@@ -170,22 +191,11 @@ interface ChatHistoryMessage {
   content: string;
 }
 
-async function generateGeminiResponse(
+function buildGeminiContents(
   prompt: string,
-  systemInstruction: string = UNIVERSAL_AI_SYSTEM_INSTRUCTION,
   history: ChatHistoryMessage[] = [],
-  selectedModel: string = 'lmls-4',
-  attachments: any[] = [],
-  clientApiKey?: string
-): Promise<string> {
-  const apiKey = getGeminiApiKey(clientApiKey);
-  if (!apiKey) {
-    throw new Error(
-      'Gemini API key is missing. Please configure GEMINI_API_KEY or NEXT_PUBLIC_GEMINI_API_KEY in your environment.'
-    );
-  }
-
-  // Build alternating Gemini contents array from history + prompt
+  attachments: any[] = []
+): Array<{ role: string; parts: Array<any> }> {
   const contents: Array<{ role: string; parts: Array<any> }> = [];
 
   if (Array.isArray(history) && history.length > 0) {
@@ -193,7 +203,6 @@ async function generateGeminiResponse(
       if (!msg || !msg.content || typeof msg.content !== 'string') continue;
       const text = msg.content.trim();
       if (!text) continue;
-      // Skip system error alerts from context
       if (text.startsWith('⚠️')) continue;
 
       const role = msg.role === 'assistant' || msg.role === 'model' ? 'model' : 'user';
@@ -207,12 +216,10 @@ async function generateGeminiResponse(
     }
   }
 
-  // Ensure first turn is 'user' (Gemini API requirement)
   while (contents.length > 0 && contents[0].role !== 'user') {
     contents.shift();
   }
 
-  // Append current prompt + multimodal attachments (ensure it has user role)
   const lastTurn = contents[contents.length - 1];
   if (lastTurn && lastTurn.role === 'user') {
     contents.push({ role: 'model', parts: [{ text: 'Understood. Please go ahead.' }] });
@@ -240,18 +247,13 @@ async function generateGeminiResponse(
     }
   }
 
-  userParts.push({ text: prompt || 'Please analyze the attached image or document in detail.' });
+  userParts.push({ text: prompt || 'Please analyze the attached context in detail.' });
   contents.push({ role: 'user', parts: userParts });
 
-  // 6 Custom LMLS Cognitive Architectures
-  const candidateModels = [
-    'gemini-2.5-flash',
-    'gemini-3.1-flash-lite-preview',
-    'gemini-flash-latest',
-    'gemma-4-26b-a4b-it',
-    'gemini-3.5-flash',
-  ];
+  return contents;
+}
 
+function buildSystemInstruction(systemInstruction: string = UNIVERSAL_AI_SYSTEM_INSTRUCTION, selectedModel: string = 'lmls-4'): string {
   let modelDirective = '';
   switch (selectedModel) {
     case 'lmls-4':
@@ -278,124 +280,283 @@ async function generateGeminiResponse(
 
   const dynamicVarianceSeed = `[Turn Seed: ${Date.now()}-${Math.random().toString(36).substring(2, 9)} | Timestamp: ${new Date().toISOString()} | Dynamic Variety Directive: You are an adaptive, highly creative conversational partner. Never repeat the exact same greeting or structure twice in a row. Vary your tone, phrasing, and angle dynamically.]`;
 
-  const finalSystemInstruction = `${systemInstruction}\n\n${modelDirective}\n\n${dynamicVarianceSeed}`;
+  return `${systemInstruction}\n\n${modelDirective}\n\n${dynamicVarianceSeed}`;
+}
 
+// ---------------------------------------------------------------------------
+// Real-time Sub-Second Streaming Handler (Gemini streamGenerateContent?alt=sse)
+// ---------------------------------------------------------------------------
+async function streamGeminiResponse({
+  prompt,
+  systemInstruction,
+  history,
+  selectedModel,
+  attachments,
+  clientApiKey,
+  aiMsgId,
+  domain,
+  userSpecifiedDeadline,
+  currentPanicLevel,
+  timestamp,
+  healthMetaPromise,
+  wikiMetaPromise,
+}: {
+  prompt: string;
+  systemInstruction?: string;
+  history?: ChatHistoryMessage[];
+  selectedModel?: string;
+  attachments?: any[];
+  clientApiKey?: string;
+  aiMsgId: string;
+  domain: DomainType;
+  userSpecifiedDeadline?: DeadlineInfo;
+  currentPanicLevel: PanicLevel;
+  timestamp: string;
+  healthMetaPromise?: Promise<HealthMeta | undefined>;
+  wikiMetaPromise?: Promise<WikiMeta | undefined>;
+}): Promise<Response> {
+  const apiKey = getGeminiApiKey(clientApiKey);
+  if (!apiKey) {
+    throw new Error('Gemini API key is missing. Please configure GEMINI_API_KEY in your environment.');
+  }
+
+  const contents = buildGeminiContents(prompt, history, attachments);
+  const finalSystemInstruction = buildSystemInstruction(systemInstruction, selectedModel);
+
+  let activeGeminiResponse: globalThis.Response | null = null;
+  let activeModelUsed = 'gemini-2.5-flash';
   let lastErrorMessage = '';
 
-  for (const model of candidateModels) {
-    // 1. Try with Google Search Grounding tool first
+  for (const model of CANDIDATE_GEMINI_MODELS) {
+    // 1. Primary: Try with thinkingBudget: 0 (sub-second TTFT)
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      const payload: {
-        contents: Array<{ role: string; parts: Array<any> }>;
-        tools?: Array<{ googleSearch: Record<string, never> }>;
-        systemInstruction?: { parts: Array<{ text: string }> };
-        generationConfig: { temperature: number; topP: number; maxOutputTokens: number };
-      } = {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`;
+      const payload: any = {
         contents,
-        tools: [{ googleSearch: {} }],
         systemInstruction: { parts: [{ text: finalSystemInstruction }] },
-        generationConfig: { temperature: 1.0, topP: 0.95, maxOutputTokens: 8192 },
+        generationConfig: {
+          temperature: 0.4,
+          topP: 0.95,
+          maxOutputTokens: 4096,
+          thinkingConfig: {
+            thinkingBudget: 0,
+          },
+        },
       };
 
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(25000),
+        signal: AbortSignal.timeout(18000),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        const candidateParts = data?.candidates?.[0]?.content?.parts;
-        let candidateText = '';
-        if (Array.isArray(candidateParts)) {
-          const nonThoughtParts = candidateParts.filter((p: any) => !p.thought);
-          const partsToUse = nonThoughtParts.length > 0 ? nonThoughtParts : candidateParts;
-          candidateText = partsToUse.map((p: any) => p.text || '').filter(Boolean).join('\n').trim();
+      if (res.ok && res.body) {
+        activeGeminiResponse = res;
+        activeModelUsed = model;
+        break;
+      } else {
+        const errJson = await res.json().catch(() => null);
+        const errMessage = errJson?.error?.message || `HTTP ${res.status}`;
+        lastErrorMessage = errMessage;
+
+        // If thinkingConfig rejected with 400 (e.g. preview model without thinkingBudget parameter), retry without it
+        if (res.status === 400 && errMessage.toLowerCase().includes('thinking')) {
+          const retryRes = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents,
+              systemInstruction: { parts: [{ text: finalSystemInstruction }] },
+              generationConfig: {
+                temperature: 0.4,
+                topP: 0.95,
+                maxOutputTokens: 4096,
+              },
+            }),
+            signal: AbortSignal.timeout(18000),
+          });
+          if (retryRes.ok && retryRes.body) {
+            activeGeminiResponse = retryRes;
+            activeModelUsed = model;
+            break;
+          }
         }
-        if (!candidateText) {
-          candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-        }
+      }
+    } catch (err: any) {
+      lastErrorMessage = err?.message || String(err);
+    }
+  }
 
-        const groundingChunks: Array<{ web?: { uri?: string; title?: string } }> =
-          data?.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-        const webSources = groundingChunks
-          .map((c) => c.web)
-          .filter((w): w is { uri: string; title: string } => Boolean(w?.uri && w?.title));
+  if (!activeGeminiResponse || !activeGeminiResponse.body) {
+    throw new Error(lastErrorMessage || 'Gemini streaming service temporarily unavailable.');
+  }
 
-        if (candidateText && webSources.length > 0) {
-          const seenTitles = new Set<string>();
-          const uniqueSources = webSources.filter((s) => {
-            const key = s.title.toLowerCase();
-            if (seenTitles.has(key)) return false;
-            seenTitles.add(key);
-            return true;
-          }).slice(0, 4);
+  const geminiReader = activeGeminiResponse.body.getReader();
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
 
-          if (uniqueSources.length > 0) {
-            const sourceLinks = uniqueSources
-              .map((s) => `[${s.title}](${s.uri})`)
-              .join(' • ');
-            candidateText += `\n\n🌐 **Grounded Sources:** ${sourceLinks}`;
+  const readableStream = new ReadableStream({
+    async start(controller) {
+      try {
+        // 1. Immediately send initial metadata in 0ms so frontend can mount message card
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({
+              type: 'meta',
+              id: aiMsgId,
+              domain,
+              model: activeModelUsed,
+              deadline: userSpecifiedDeadline,
+              timestamp,
+            })}\n\n`
+          )
+        );
+
+        let buffer = '';
+        while (true) {
+          const { done, value } = await geminiReader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith('data:')) continue;
+            const dataStr = trimmed.replace(/^data:\s*/, '');
+            if (!dataStr || dataStr === '[DONE]') continue;
+
+            try {
+              const parsed = JSON.parse(dataStr);
+              const parts = parsed?.candidates?.[0]?.content?.parts;
+              if (Array.isArray(parts)) {
+                for (const p of parts) {
+                  if (p.thought) continue;
+                  if (p.text) {
+                    controller.enqueue(
+                      encoder.encode(
+                        `data: ${JSON.stringify({ type: 'chunk', text: p.text })}\n\n`
+                      )
+                    );
+                  }
+                }
+              }
+            } catch {
+              // ignore partial SSE frames
+            }
           }
         }
 
-        if (candidateText) {
-          return candidateText.trim();
+        // Flush trailing buffer
+        if (buffer.trim().startsWith('data:')) {
+          try {
+            const dataStr = buffer.trim().replace(/^data:\s*/, '');
+            if (dataStr && dataStr !== '[DONE]') {
+              const parsed = JSON.parse(dataStr);
+              const parts = parsed?.candidates?.[0]?.content?.parts;
+              if (Array.isArray(parts)) {
+                for (const p of parts) {
+                  if (!p.thought && p.text) {
+                    controller.enqueue(
+                      encoder.encode(
+                        `data: ${JSON.stringify({ type: 'chunk', text: p.text })}\n\n`
+                      )
+                    );
+                  }
+                }
+              }
+            }
+          } catch {
+            // ignore
+          }
         }
-      } else {
-        const errJson = await res.json().catch(() => null);
-        const errMessage =
-          errJson?.error?.message ||
-          (typeof errJson?.error === 'string' ? errJson.error : null) ||
-          `Gemini API HTTP ${res.status}: ${res.statusText}`;
-        lastErrorMessage = errMessage;
 
-        // If the API key is invalid or unauthorized, fail immediately
-        if (
-          res.status === 400 &&
-          (errMessage.toLowerCase().includes('api key') ||
-           errMessage.toLowerCase().includes('key not valid') ||
-           errJson?.error?.status === 'INVALID_ARGUMENT')
-        ) {
-          throw new Error(errMessage);
-        }
-        if (res.status === 401 || res.status === 403) {
-          throw new Error(errMessage);
-        }
-      }
-    } catch (err: any) {
-      if (
-        err?.message &&
-        (err.message.toLowerCase().includes('api key') ||
-         err.message.toLowerCase().includes('key not valid') ||
-         err.message.includes('401') ||
-         err.message.includes('403'))
-      ) {
-        throw err;
-      }
-      lastErrorMessage = err?.message || String(err);
-    }
+        // 2. Await concurrent background tasks (JEV health triage, Wikipedia)
+        const [healthMeta, wikiMeta] = await Promise.all([
+          healthMetaPromise || Promise.resolve(undefined),
+          wikiMetaPromise || Promise.resolve(undefined),
+        ]);
 
-    // 2. Fallback: Try the same model without tools (in case free-tier search tools quota is exhausted)
+        // 3. Emit done event with complete enriched metadata
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({
+              type: 'done',
+              suggestedPanicLevel: userSpecifiedDeadline?.priority || currentPanicLevel,
+              healthMeta,
+              wikiMeta,
+            })}\n\n`
+          )
+        );
+        controller.close();
+      } catch (streamErr: any) {
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({
+              type: 'error',
+              error: streamErr?.message || 'Streaming failed',
+            })}\n\n`
+          )
+        );
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(readableStream, {
+    headers: {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Non-streaming Response Fallback (used if client requests non-streaming JSON)
+// ---------------------------------------------------------------------------
+async function generateGeminiResponse(
+  prompt: string,
+  systemInstruction: string = UNIVERSAL_AI_SYSTEM_INSTRUCTION,
+  history: ChatHistoryMessage[] = [],
+  selectedModel: string = 'lmls-4',
+  attachments: any[] = [],
+  clientApiKey?: string
+): Promise<string> {
+  const apiKey = getGeminiApiKey(clientApiKey);
+  if (!apiKey) {
+    throw new Error('Gemini API key is missing. Please configure GEMINI_API_KEY in your environment.');
+  }
+
+  const contents = buildGeminiContents(prompt, history, attachments);
+  const finalSystemInstruction = buildSystemInstruction(systemInstruction, selectedModel);
+
+  let lastErrorMessage = '';
+
+  for (const model of CANDIDATE_GEMINI_MODELS) {
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      const payload: {
-        contents: Array<{ role: string; parts: Array<any> }>;
-        systemInstruction?: { parts: Array<{ text: string }> };
-        generationConfig: { temperature: number; topP: number; maxOutputTokens: number };
-      } = {
+      const payload: any = {
         contents,
         systemInstruction: { parts: [{ text: finalSystemInstruction }] },
-        generationConfig: { temperature: 1.0, topP: 0.95, maxOutputTokens: 8192 },
+        generationConfig: {
+          temperature: 0.4,
+          topP: 0.95,
+          maxOutputTokens: 4096,
+          thinkingConfig: {
+            thinkingBudget: 0,
+          },
+        },
       };
 
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(25000),
+        signal: AbortSignal.timeout(20000),
       });
 
       if (res.ok) {
@@ -410,40 +571,14 @@ async function generateGeminiResponse(
         if (!candidateText) {
           candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
         }
-
         if (candidateText) {
           return candidateText.trim();
         }
       } else {
         const errJson = await res.json().catch(() => null);
-        const errMessage =
-          errJson?.error?.message ||
-          (typeof errJson?.error === 'string' ? errJson.error : null) ||
-          `Gemini API HTTP ${res.status}: ${res.statusText}`;
-        lastErrorMessage = errMessage;
-
-        if (
-          res.status === 400 &&
-          (errMessage.toLowerCase().includes('api key') ||
-           errMessage.toLowerCase().includes('key not valid') ||
-           errJson?.error?.status === 'INVALID_ARGUMENT')
-        ) {
-          throw new Error(errMessage);
-        }
-        if (res.status === 401 || res.status === 403) {
-          throw new Error(errMessage);
-        }
+        lastErrorMessage = errJson?.error?.message || `HTTP ${res.status}`;
       }
     } catch (err: any) {
-      if (
-        err?.message &&
-        (err.message.toLowerCase().includes('api key') ||
-         err.message.toLowerCase().includes('key not valid') ||
-         err.message.includes('401') ||
-         err.message.includes('403'))
-      ) {
-        throw err;
-      }
       lastErrorMessage = err?.message || String(err);
     }
   }
@@ -462,6 +597,7 @@ export async function POST(req: NextRequest) {
       attachments = [],
       history = [],
       model = 'lmls-4',
+      stream = true,
     } = body;
 
     const trimmedPrompt = (message || prompt || '').trim();
@@ -474,16 +610,6 @@ export async function POST(req: NextRequest) {
 
     // Extract deadline only if user explicitly provided a date or time in the prompt
     const userSpecifiedDeadline = extractUserSpecifiedDeadline(trimmedPrompt, currentPanicLevel);
-
-    // Normal live call to Google Gemini API (no fake/fallback responses)
-    const content = await generateGeminiResponse(
-      trimmedPrompt,
-      UNIVERSAL_AI_SYSTEM_INSTRUCTION,
-      history,
-      model,
-      attachments,
-      body.apiKey
-    );
 
     // Determine domain tag for message
     const lower = trimmedPrompt.toLowerCase();
@@ -526,63 +652,99 @@ export async function POST(req: NextRequest) {
       domain = 'academic';
     }
 
-    // Optional background clinical assessment for health queries
-    let healthMeta: HealthMeta | undefined;
+    // Kick off concurrent background enrichment tasks (JEV health triage & Wikipedia)
+    let healthMetaPromise: Promise<HealthMeta | undefined> | undefined;
     if (domain === 'health') {
-      try {
-        const jevDecision = await fetchJevDecision(trimmedPrompt, userSpecifiedDeadline?.parsedDate);
-        const hasSevere =
-          lower.includes('chest pain') ||
-          lower.includes('shortness of breath') ||
-          lower.includes('severe') ||
-          lower.includes('stroke') ||
-          lower.includes('emergency');
+      healthMetaPromise = (async () => {
+        try {
+          const jevDecision = await fetchJevDecision(trimmedPrompt, userSpecifiedDeadline?.parsedDate);
+          const hasSevere =
+            lower.includes('chest pain') ||
+            lower.includes('shortness of breath') ||
+            lower.includes('severe') ||
+            lower.includes('stroke') ||
+            lower.includes('emergency');
 
-        healthMeta = {
-          sources: [
-            'LMLS Cognitive Intelligence Network',
-            'Clinical Intelligence Reviews',
-            'PubMed Central Reviews',
-            'JEV Decision Engine v3.2',
-          ],
-          takeaways: [
-            'Align sleep, hydration, and nutritional intervals with biological circadian timing.',
-            'Maintain regular cardiovascular conditioning (Zone-2 aerobic baseline).',
-            'Consult a licensed physician for persistent, escalating, or severe clinical symptoms.',
-          ],
-          disclaimer:
-            'Clinical Disclaimer: For educational and decision-support purposes only. Not individual medical diagnosis or treatment.',
-          metrics: [
-            {
-              label: 'Circadian State',
-              value: hasSevere ? 'Elevated' : 'Nominal',
-              targetRange: 'Stabilized',
-              status: hasSevere ? 'warning' : 'optimal',
-            },
-            {
-              label: 'Resting Index',
-              value: hasSevere ? 'Irregular' : 'Normal',
-              targetRange: 'Restful',
-              status: hasSevere ? 'alert' : 'optimal',
-            },
-          ],
-          jevDecision,
-        };
-      } catch {
-        // Non-fatal
-      }
+          return {
+            sources: [
+              'LMLS Cognitive Intelligence Network',
+              'Clinical Intelligence Reviews',
+              'PubMed Central Reviews',
+              'JEV Decision Engine v3.2',
+            ],
+            takeaways: [
+              'Align sleep, hydration, and nutritional intervals with biological circadian timing.',
+              'Maintain regular cardiovascular conditioning (Zone-2 aerobic baseline).',
+              'Consult a licensed physician for persistent, escalating, or severe clinical symptoms.',
+            ],
+            disclaimer:
+              'Clinical Disclaimer: For educational and decision-support purposes only. Not individual medical diagnosis or treatment.',
+            metrics: [
+              {
+                label: 'Circadian State',
+                value: hasSevere ? 'Elevated' : 'Nominal',
+                targetRange: 'Stabilized',
+                status: hasSevere ? 'warning' : 'optimal',
+              },
+              {
+                label: 'Resting Index',
+                value: hasSevere ? 'Irregular' : 'Normal',
+                targetRange: 'Restful',
+                status: hasSevere ? 'alert' : 'optimal',
+              },
+            ],
+            jevDecision,
+          };
+        } catch {
+          return undefined;
+        }
+      })();
     }
 
-    // Optional Wikipedia context for encyclopedia concepts
-    let wikiMeta: WikiMeta | undefined;
+    let wikiMetaPromise: Promise<WikiMeta | undefined> | undefined;
     if (domain === 'academic' || domain === 'news') {
-      try {
-        const wikiHit = await fetchWikipediaKnowledge(trimmedPrompt);
-        if (wikiHit) wikiMeta = wikiHit;
-      } catch {
-        // Non-fatal
-      }
+      wikiMetaPromise = (async () => {
+        try {
+          return (await fetchWikipediaKnowledge(trimmedPrompt)) || undefined;
+        } catch {
+          return undefined;
+        }
+      })();
     }
+
+    // 1. If streaming enabled (default), return immediate sub-second SSE stream
+    if (stream !== false) {
+      return await streamGeminiResponse({
+        prompt: trimmedPrompt,
+        systemInstruction: UNIVERSAL_AI_SYSTEM_INSTRUCTION,
+        history,
+        selectedModel: model,
+        attachments,
+        clientApiKey: body.apiKey,
+        aiMsgId,
+        domain,
+        userSpecifiedDeadline,
+        currentPanicLevel,
+        timestamp,
+        healthMetaPromise,
+        wikiMetaPromise,
+      });
+    }
+
+    // 2. Non-streaming JSON fallback
+    const content = await generateGeminiResponse(
+      trimmedPrompt,
+      UNIVERSAL_AI_SYSTEM_INSTRUCTION,
+      history,
+      model,
+      attachments,
+      body.apiKey
+    );
+
+    const [healthMeta, wikiMeta] = await Promise.all([
+      healthMetaPromise || Promise.resolve(undefined),
+      wikiMetaPromise || Promise.resolve(undefined),
+    ]);
 
     const responseMessage: ChatMessage = {
       id: aiMsgId,
